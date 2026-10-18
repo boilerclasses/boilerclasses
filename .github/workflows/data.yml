@@ -23,7 +23,7 @@ permissions:
 concurrency: data-pipeline
 
 env:
-  BUCKET: boilerclasses
+  BUCKET: boilerclasses-bucket
   AWS_REGION: us-east-2
 
 jobs:

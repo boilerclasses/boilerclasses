@@ -61,7 +61,7 @@ When the container starts, `embed.py` runs in the background while the site serv
 # Data Collection
 
 Data is refreshed by the **Data Pipeline** GitHub Action (`.github/workflows/data.yml`), weekly on Mondays or by hand from the Actions tab:
-1. `scrape.py` scrapes the newest 2 semesters from Purdue's catalog and uploads them to our [S3 bucket](https://s3.amazonaws.com/boilerclasses). Older semesters stay as they are on S3.
+1. `scrape.py` scrapes the newest 2 semesters from Purdue's catalog and uploads them to our [S3 bucket](https://s3.amazonaws.com/boilerclasses-bucket). Older semesters stay as they are on S3.
 2. `grades.py` converts the newest 5 semesters of grade CSVs from [BoilerGrades](https://github.com/eduxstad/boiler-grades) and uploads any that changed.
 3. `harmonize.py` combines everything on S3 into one JSON file and writes `src/data/terms.json` for the frontend.
 4. If the result changed, it's uploaded as `snapshots/<sha256>.json`, the hash is committed to `data.lock`, and the site is deployed. Only the snapshots from the last 10 `data.lock` commits are kept.
