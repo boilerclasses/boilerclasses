@@ -16,7 +16,7 @@ export default async function middleware(req) {
   const url = new URL(req.url);
   const hostname = req.headers.get("host") || "";
 
-  const allowedDomains = ["localhost:3000", "boilerclasses.com", "boilerclasses.fly.dev"];
+  const allowedDomains = ["localhost:3000", "boilerclasses.com"];
 
   const isAllowedDomain = hostname === "localhost"
     || hostname.startsWith("localhost:")
