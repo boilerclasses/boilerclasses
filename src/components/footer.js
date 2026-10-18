@@ -27,6 +27,8 @@ const Footer = () => {
                     </span>
                 </span>
                 An <Link href={`/dir`}>unofficial catalog</Link> for Purdue courses made by Purdue students. We'd love to hear your <button onClick={onOpen} className='underline decoration-dashed decoration-1 underline-offset-2'>feedback</button>!
+                <br />
+                Want to help build it? <a href='https://boilerexams.com/apply' target="_blank" rel="noopener noreferrer" className='underline decoration-dashed decoration-1 underline-offset-2'>Join the team</a>!
                 {/* Inspired by <a href='https://classes.wtf/' target='_blank' rel='noopener noreferrer' className='underline decoration-dashed decoration-1 underline-offset-2'>classes.wtf</a><br /> */}
             </h1>
             <FeedbackModal isOpen={isOpen} onClose={onClose} />
