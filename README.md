@@ -8,9 +8,7 @@ BoilerClasses is a simple [Next.js](https://nextjs.org/) app with a few Python h
 The app runs in a [Docker](https://www.docker.com/) container on a server run by [Boilerexams](https://boilerexams.com), behind [Cloudflare](https://www.cloudflare.com/). Every push to `main` is deployed by the **Deploy** GitHub Action (`.github/workflows/deploy.yml`) on a self-hosted runner on that server. It builds the new image while the old container keeps serving, swaps them, and rolls back if the new one fails its health check. Steps to run the same container locally are below.
 
 # Contributing
-All contributions are very, very welcome! If you find a *bug* or have any *feedback*, open an [issue](https://github.com/boilerclasses/boilerclasses/issues) or a [PR](https://github.com/boilerclasses/boilerclasses/pulls), or use our [feedback form](https://docs.google.com/forms/d/e/1FAIpQLScoE5E-G7dbr7-v9dY5S7UeIoojjMTjP_XstLz38GBpib5MPA/viewform).
-
-BoilerClasses is maintained by the [Boilerexams](https://boilerexams.com) team. If you'd like to work on it (and Boilerexams) with us regularly, [apply to join the team](https://boilerexams.com/apply)!
+All contributions are very, very welcome! If you find a *bug* or have any *feedback*, open an [issue](https://github.com/boilerclasses/boilerclasses/issues) or a [PR](https://github.com/boilerclasses/boilerclasses/pulls), or use our [feedback form](https://docs.google.com/forms/d/e/1FAIpQLScoE5E-G7dbr7-v9dY5S7UeIoojjMTjP_XstLz38GBpib5MPA/viewform). BoilerClasses is maintained by the [Boilerexams](https://boilerexams.com) team. If you'd like to work on it (and Boilerexams) with us regularly, [apply to join the team](https://boilerexams.com/apply)!
 
 # Setup
 You can clone this repository and run a local instance of the app in two ways (with or without Docker):
@@ -79,4 +77,4 @@ Manual runs take two optional inputs: `terms` (e.g. `["Fall 2026"]`, or `[]` to 
 Running the `scrape.py` script may cause issues, but feel free to tweak line ~42, where the driver is initialized. It is somewhat system-dependent -- that configuration should work on MacOS with a Google Chrome driver and `selenium v4.x`. If you want more clarification/help, open up an [issue](https://github.com/boilerclasses/boilerclasses/issues)!
 
 # Acknowledgements
-Inspired by [classes.wtf](https://classes.wtf) and Purdue's slow course catalogs. We'd like to also thank our friends over at [Boilerexams](https://boilerexams.com), [Purdue.io](https://purdue.io/), and [BoilerGrades](https://boilergrades.com/).
+Inspired by [classes.wtf](https://classes.wtf) and Purdue's slow course catalogs, BoilerClasses was created by [@knightron0](https://github.com/knightron0), [@unkn-wn](https://github.com/unkn-wn) and [@SohamJog](https://github.com/SohamJog). We'd also like to thank our friends over at [Purdue.io](https://purdue.io/) and [BoilerGrades](https://boilergrades.com/).
