@@ -8,6 +8,7 @@ import Head from "next/head";
 import Script from 'next/script';
 
 import Footer from '@/components/footer';
+import Banner from '@/components/banner';
 import dynamic from 'next/dynamic'
 import { RouteHistoryProvider } from '@/hooks/useRouteHistory';
 
@@ -60,6 +61,7 @@ export default function App({ Component, pageProps }) {
           <title>BoilerClasses</title>
         </Head>
 
+        <Banner />
         <Component {...pageProps} />
 
         {/* <Footer /> */}
