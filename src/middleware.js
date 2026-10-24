@@ -8,7 +8,7 @@ const subdomains = [
 
 export const config = {
   matcher: [
-    "/((?!api/|_next/|_static/|_vercel|[\\w-]+\\.\\w+).*)",
+    "/((?!api/|_next/|_static/|[\\w-]+\\.\\w+).*)",
   ],
 };
 

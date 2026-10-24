@@ -15,8 +15,6 @@
     "@choc-ui/chakra-autocomplete": "^5.2.9",
     "@emotion/react": "^11.11.1",
     "@mtucourses/rate-my-professors": "^2.2.1",
-    "@vercel/analytics": "^1.1.1",
-    "@vercel/og": "^0.6.2",
     "base64-arraybuffer": "^1.0.2",
     "chakra-multiselect": "^0.4.6",
     "chart.js": "^4.4.1",
