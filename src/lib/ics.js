@@ -1,4 +1,3 @@
-import { CURRENT_SEMESTER } from '@/hooks/useSearchFilters';
 
 // Properly format date for iCalendar format with America/New_York timezone
 const formatICSDate = (date) => {
@@ -101,12 +100,12 @@ export const generateICS = (lectures) => {
   return icsContent.join('\r\n');
 };
 
-export const downloadICS = (lectures) => {
+export const downloadICS = (lectures, semester) => {
   const icsContent = generateICS(lectures);
   const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
   const link = document.createElement('a');
   link.href = window.URL.createObjectURL(blob);
-  link.setAttribute('download', `${CURRENT_SEMESTER}_BoilerClasses.ics`);
+  link.setAttribute('download', `${semester}_BoilerClasses.ics`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

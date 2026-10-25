@@ -1,10 +1,12 @@
 import { convertTo12HourFormat } from '@/lib/timeUtils';
 import { normalizeInstructorName } from '@/components/schedule/utils/scheduleUtils';
+import { CURRENT_SEMESTER_CODE } from '@/lib/terms';
 
-// Current-term sections scraped from Banner, or null if the course isn't offered this term.
-export const getSections = async (detailId) => {
+// A term's sections scraped from Banner, or null if the course isn't offered that term.
+export const getSections = async (detailId, term = CURRENT_SEMESTER_CODE) => {
   try {
-    const response = await fetch(`/api/sections?detailId=${encodeURIComponent(detailId)}`);
+    const params = new URLSearchParams({ detailId, term });
+    const response = await fetch(`/api/sections?${params}`);
     if (!response.ok) {
       throw new Error(`Network response was not ok: ${response.status}`);
     }

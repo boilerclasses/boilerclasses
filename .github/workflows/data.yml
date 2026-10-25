@@ -96,7 +96,7 @@ jobs:
           python3 scrape.py -sem "$TERM_NAME" --fresh
           SLUG=$(echo "$TERM_NAME" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
           aws s3 cp "data/classes_${SLUG}.json" "s3://$BUCKET/data/classes_${SLUG}.json"
-      # publish pins the current term's file in sections.lock
+      # publish pins the schedule terms' files in sections.lock
       - if: inputs.subjects == ''
         name: Scrape and upload sections
         working-directory: server
@@ -157,17 +157,19 @@ jobs:
           aws s3 cp classes_out.json "s3://$BUCKET/snapshots/$SHA.json"
           echo "$SHA" > ../data.lock
           echo "changed=true" >> "$GITHUB_OUTPUT"
-      # current term's sections (synced down with data/ above), pinned in sections.lock like data.lock
+      # the schedule terms' sections (synced down with data/ above), merged into one
+      # {termCode: {detailId: sections}} file and pinned in sections.lock like data.lock
       - id: sections
         working-directory: server
         run: |
-          CODE=$(python3 -c 'import json; print(json.load(open("../src/data/terms.json"))["current"]["code"])')
-          if [ ! -f "data/sections/$CODE.json" ]; then
-            echo "no sections for $CODE, keeping sections.lock"
+          if [ -f ../sections.lock ]; then
+            aws s3 cp "s3://$BUCKET/snapshots/$(cat ../sections.lock).json" data/sections_pinned.json || true
+          fi
+          if ! python3 merge_sections.py --pinned data/sections_pinned.json; then
+            echo "::warning::could not merge sections, keeping sections.lock"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          cp "data/sections/$CODE.json" sections_out.json
           SHA=$(sha256sum sections_out.json | cut -d' ' -f1)
           if [ "$SHA" = "$(cat ../sections.lock 2>/dev/null)" ]; then
             echo "sections unchanged"

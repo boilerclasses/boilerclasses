@@ -1,7 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { convertNumberToTime } from './timeUtils';
 import { translateType } from '@/components/calendar';
-import { CURRENT_SEMESTER } from '@/hooks/useSearchFilters';
 import { DAYS, TIMES } from '@/components/schedule/utils/constants';
 import { graphColors } from "@/lib/utils";
 
@@ -208,7 +207,7 @@ const hexToRgb = (hex) => {
 };
 
 // main
-export const openPDFInNewTab = (selectedLectures) => {
+export const openPDFInNewTab = (selectedLectures, semester) => {
   const doc = new jsPDF({
     format: 'letter',
     unit: 'mm'
@@ -225,7 +224,7 @@ export const openPDFInNewTab = (selectedLectures) => {
   // Draw main schedule title
   doc.setFont('Inter', 'bold');
   doc.setFontSize(STYLE.titleSize);
-  doc.text(`${CURRENT_SEMESTER} Course Schedule`, STYLE.padding, STYLE.topMargin);
+  doc.text(`${semester} Course Schedule`, STYLE.padding, STYLE.topMargin);
 
   // Calculate right side positions (215.9 is letter width in mm)
   const pageWidth = 215.9;
@@ -247,5 +246,5 @@ export const openPDFInNewTab = (selectedLectures) => {
   drawCourseBlocks(doc, startY, selectedLectures, courseColorMap);
   drawDetailedSchedule(doc, selectedLectures, courseColorMap);
 
-  doc.output('dataurlnewwindow', { filename: `${CURRENT_SEMESTER}_BoilerClasses.pdf` });
+  doc.output('dataurlnewwindow', { filename: `${semester}_BoilerClasses.pdf` });
 };

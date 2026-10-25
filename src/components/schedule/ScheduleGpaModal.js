@@ -1,32 +1,31 @@
-// FOR SCHEDULER - Component that displays GPA history for instructors teaching the course in the current semester
+// FOR SCHEDULER - Component that displays GPA history for instructors teaching the course in the planned semester
 import React, { useState, useEffect } from 'react';
 import { processGpaData } from '@/lib/gpaUtils';
-import { CURRENT_SEMESTER } from '@/hooks/useSearchFilters';
 
 export const replaceZeroGpaWithDash = (gpa) => {
   return gpa === 0 ? '-' : gpa.toFixed(2);
 };
 
-const ScheduleGpaModal = ({ course }) => {
+const ScheduleGpaModal = ({ course, semester }) => {
   const [gpa, setGpa] = useState({});
 
   useEffect(() => {
     const grades = processGpaData(course, true);
 
-    // only show instructors that are teaching in the current semester
-    if (!course.instructor[CURRENT_SEMESTER]) {
+    // only show instructors that are teaching in the planned semester
+    if (!course.instructor[semester]) {
       setGpa({});
       return;
     }
 
     for (const instructor in grades) {
-      if (!course.instructor[CURRENT_SEMESTER].includes(instructor)) {
+      if (!course.instructor[semester].includes(instructor)) {
         delete grades[instructor];
       }
     }
 
     setGpa(grades);
-  }, [course]);
+  }, [course, semester]);
 
   return (
     <div className='flex flex-col'>

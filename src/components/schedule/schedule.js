@@ -8,6 +8,7 @@ import FeedbackModal from '../feedbackModal';
 
 import ScheduleManager from './scheduleManager';
 import { getSections, processLectureData } from '@/lib/sections';
+import { semesterStorageKey } from '@/lib/terms';
 
 // Func to get course color index based on detailId
 export const getCourseColorIndex = (detailId, courseColorMap) => {
@@ -17,7 +18,7 @@ export const getCourseColorIndex = (detailId, courseColorMap) => {
   return courseColorMap.get(detailId);
 };
 
-const ScheduleCalendar = ({ courses = [], setIsLoading, setSelectedCourse, onCourseRemove }) => {
+const ScheduleCalendar = ({ semester, courses = [], setIsLoading, setSelectedCourse, onCourseRemove }) => {
   const toast = useToast();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [hoveredCourse, setHoveredCourse] = useState(null);
@@ -28,7 +29,7 @@ const ScheduleCalendar = ({ courses = [], setIsLoading, setSelectedCourse, onCou
   const [selectedLectureIds, setSelectedLectureIds] = useState(() => {
     try {
       if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('selectedLectures');
+        const saved = localStorage.getItem(semesterStorageKey('selectedLectures', semester.code));
 
         const parsedData = saved ? JSON.parse(saved) : [];
         const dataArray = Array.isArray(parsedData) ? parsedData : [];
@@ -44,9 +45,9 @@ const ScheduleCalendar = ({ courses = [], setIsLoading, setSelectedCourse, onCou
   // Add effect to save selected lectures whenever they change
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('selectedLectures', JSON.stringify([...selectedLectureIds]));
+      localStorage.setItem(semesterStorageKey('selectedLectures', semester.code), JSON.stringify([...selectedLectureIds]));
     }
-  }, [selectedLectureIds]);
+  }, [selectedLectureIds, semester.code]);
 
   useEffect(() => {
     const fetchCourseData = async () => {
@@ -60,7 +61,7 @@ const ScheduleCalendar = ({ courses = [], setIsLoading, setSelectedCourse, onCou
 
       setIsLoading(true);
       try {
-        const coursePromises = courses.map(course => getSections(course.detailId));
+        const coursePromises = courses.map(course => getSections(course.detailId, semester.code));
 
         const rawResults = await Promise.all(coursePromises);
         // Pass the full courses array to processLectureData
@@ -262,6 +263,7 @@ const ScheduleCalendar = ({ courses = [], setIsLoading, setSelectedCourse, onCou
       {/* Manager Section */}
       <div className="space-y-4 mt-4">
         <ScheduleManager
+          semester={semester.name}
           lectures={allLectures}
           selectedLectureIds={selectedLectureIds}
           onLectureSelectionChange={handleLectureSelectionChange}

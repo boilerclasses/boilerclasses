@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 
-import { CURRENT_SEMESTER } from '@/hooks/useSearchFilters';
-
-const CourseSearch = ({ courses, onSelect, searchTerm, updateFilter }) => {
+const CourseSearch = ({ courses, semester, onSelect, searchTerm, updateFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const wrapperRef = useRef(null);
@@ -16,10 +14,10 @@ const CourseSearch = ({ courses, onSelect, searchTerm, updateFilter }) => {
 
     // Stable sort preserves Redis relevance within each availability group.
     return [...courses].sort((a, b) =>
-      Number(b.value.terms.includes(CURRENT_SEMESTER)) -
-      Number(a.value.terms.includes(CURRENT_SEMESTER))
+      Number(b.value.terms.includes(semester)) -
+      Number(a.value.terms.includes(semester))
     ).slice(0, 10);
-  }, [courses, shouldShowDropdown]);
+  }, [courses, semester, shouldShowDropdown]);
 
   // Update coursesRef when displayedCourses changes
   useEffect(() => {
@@ -126,15 +124,15 @@ const CourseSearch = ({ courses, onSelect, searchTerm, updateFilter }) => {
                   <div className="text-sm text-tertiary truncate">
                     {course.value.title}
                   </div>
-                  {!course.value.terms.includes(CURRENT_SEMESTER) && (
+                  {!course.value.terms.includes(semester) && (
                     <span className="md:hidden block text-xs px-2 py-1 rounded h-fit w-fit self-start bg-orange-500/50 text-orange-100/50">
-                      Not Offered in {CURRENT_SEMESTER}
+                      Not Offered in {semester}
                     </span>
                   )}
                 </div>
-                {!course.value.terms.includes(CURRENT_SEMESTER) && (
+                {!course.value.terms.includes(semester) && (
                   <span className="hidden md:block text-xs px-2 py-1 rounded h-fit self-start bg-orange-500/50 text-orange-100/50">
-                    Not Offered in {CURRENT_SEMESTER}
+                    Not Offered in {semester}
                   </span>
                 )}
               </div>

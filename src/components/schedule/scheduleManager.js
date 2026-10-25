@@ -5,7 +5,7 @@ import CourseGroup from './CourseGroup';
 import { downloadICS } from '@/lib/ics';
 import { openPDFInNewTab } from '@/lib/pdf';  // Update import
 
-const ScheduleManager = ({ lectures, selectedLectureIds, onLectureSelectionChange, setSelectedCourse, onCourseRemove, courseColorMap }) => {
+const ScheduleManager = ({ semester, lectures, selectedLectureIds, onLectureSelectionChange, setSelectedCourse, onCourseRemove, courseColorMap }) => {
   const [minCredits, setMinCredits] = useState(0);
   const [maxCredits, setMaxCredits] = useState(0);
 
@@ -78,12 +78,12 @@ const ScheduleManager = ({ lectures, selectedLectureIds, onLectureSelectionChang
                 {
                   label: 'Export as ICS',
                   icon: <IoMdDownload />,
-                  onClick: () => downloadICS(selectedLectures)
+                  onClick: () => downloadICS(selectedLectures, semester)
                 },
                 {
                   label: 'Export as PDF',
                   icon: <IoMdDownload />,
-                  onClick: () => openPDFInNewTab(selectedLectures)
+                  onClick: () => openPDFInNewTab(selectedLectures, semester)
                 }
               ]}
             >
