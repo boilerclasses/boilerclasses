@@ -34,6 +34,8 @@ const Footer = () => {
                         <button onClick={onOpen} className='underline decoration-dashed decoration-1 underline-offset-2'>Feedback</button>
                         <span>·</span>
                         <a href='https://boilerexams.com/apply' target="_blank" rel="noopener noreferrer" className='underline decoration-dashed decoration-1 underline-offset-2'>Join the team</a>
+                        <span>·</span>
+                        <a href='https://status.boilerexams.com' target="_blank" rel="noopener noreferrer" className='underline decoration-dashed decoration-1 underline-offset-2'>Status</a>
                     </span>
                 </span>
                 {/* Inspired by <a href='https://classes.wtf/' target='_blank' rel='noopener noreferrer' className='underline decoration-dashed decoration-1 underline-offset-2'>classes.wtf</a><br /> */}
