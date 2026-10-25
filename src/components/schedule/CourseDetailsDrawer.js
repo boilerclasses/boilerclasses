@@ -7,6 +7,7 @@ import { ScheduleGpaModal } from '@/components/detail/gpaModal';
 import { collectAllProfessors, calculateGradesAndGPA, averageAllData } from '@/lib/gpaUtils';
 import { genedsOptions, labels, sanitizeDescription } from '@/lib/utils';
 import { courseName } from '@/lib/schedule';
+import { offering } from '@/lib/terms';
 
 const Section = ({ title, children }) => (
   <div className='flex flex-col gap-1'>
@@ -17,7 +18,7 @@ const Section = ({ title, children }) => (
 
 // Everything about one course (grades, instructors, prerequisites) in a panel that
 // slides over the planner, so the calendar keeps the page.
-const CourseDetailsDrawer = ({ course, semester, inPlan, onAdd, onClose }) => {
+const CourseDetailsDrawer = ({ course, semester, inPlan, onAdd, onPlanInTerm, onClose }) => {
   const graph = useMemo(() => {
     if (!course?.instructor) return null;
     sanitizeDescription(course);
@@ -26,8 +27,10 @@ const CourseDetailsDrawer = ({ course, semester, inPlan, onAdd, onClose }) => {
     return datasets.length && !datasets[0].data.every(value => value === 0) ? { labels, datasets } : null;
   }, [course]);
 
-  const instructors = course?.instructor?.[semester.name] ?? [];
-  const offered = instructors.length > 0;
+  // a course that doesn't run this term shows the term it does run (or last ran) instead
+  const availability = course ? offering(course.terms, semester.name) : { offered: true };
+  const shownTerm = availability.offered ? semester.name : (availability.other?.name ?? availability.last);
+  const instructors = (shownTerm && course?.instructor?.[shownTerm]) ?? [];
 
   return (
     <Drawer isOpen={Boolean(course)} placement='right' onClose={onClose} size='md'>
@@ -48,7 +51,7 @@ const CourseDetailsDrawer = ({ course, semester, inPlan, onAdd, onClose }) => {
                 >
                   <IoMdOpen /> Full page
                 </a>
-                {!inPlan && offered && (
+                {!inPlan && availability.offered && (
                   <button
                     onClick={() => onAdd(course)}
                     className='flex items-center gap-1 rounded-full bg-yellow-600 px-3 py-1 text-sm font-normal text-white hover:bg-yellow-700 transition'
@@ -56,12 +59,21 @@ const CourseDetailsDrawer = ({ course, semester, inPlan, onAdd, onClose }) => {
                     <IoMdAdd /> Add to schedule
                   </button>
                 )}
-                {!offered && (
-                  <span className='rounded-full bg-yellow-900/40 px-3 py-1 text-sm font-normal text-yellow-600'>
-                    Not offered in {semester.name}
-                  </span>
+                {availability.other && (
+                  <button
+                    onClick={() => onPlanInTerm(availability.other, course)}
+                    className='flex items-center gap-1 rounded-full bg-yellow-600 px-3 py-1 text-sm font-normal text-white hover:bg-yellow-700 transition'
+                  >
+                    <IoMdAdd /> Plan it for {availability.other.name}
+                  </button>
                 )}
               </div>
+              {!availability.offered && (
+                <p className='mt-2 text-sm font-normal text-tertiary'>
+                  Not offered in {semester.name}
+                  {availability.other ? `. It runs in ${availability.other.name}.` : availability.last ? `. Last offered ${availability.last}.` : '.'}
+                </p>
+              )}
             </DrawerHeader>
             <DrawerBody className='flex flex-col gap-5 pb-8'>
               <p className='text-sm text-secondary'>{course.description}</p>
@@ -79,8 +91,8 @@ const CourseDetailsDrawer = ({ course, semester, inPlan, onAdd, onClose }) => {
                   </div>
                 </Section>
               </div>
-              <Section title={`Instructors · ${semester.name}`}>
-                {offered ? (
+              <Section title={shownTerm ? `Instructors · ${shownTerm}` : 'Instructors'}>
+                {instructors.length ? (
                   <div className='flex flex-wrap gap-x-2 text-sm text-blue-500'>
                     {instructors.map(name => (
                       <a
@@ -102,7 +114,7 @@ const CourseDetailsDrawer = ({ course, semester, inPlan, onAdd, onClose }) => {
                 </Section>
               )}
               <Section title='GPA by semester'>
-                <ScheduleGpaModal course={course} semester={semester.name} />
+                <ScheduleGpaModal course={course} semester={shownTerm ?? semester.name} />
               </Section>
               <Section title='Grade distribution'>
                 {graph ? (

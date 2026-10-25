@@ -32,3 +32,14 @@ export const migrateScheduleStorage = () => {
     localStorage.removeItem(key);
   }
 };
+
+// Whether a course runs in `termName`, and if not, the most useful thing to say instead:
+// the other schedule term it does run in ("Fall 2026 only"), or when it last ran.
+export const offering = (courseTerms = [], termName) => {
+  if (courseTerms.includes(termName)) return { offered: true };
+  const other = SCHEDULE_SEMESTERS.find(option => option.name !== termName && courseTerms.includes(option.name));
+  if (other) return { offered: false, other, label: `${other.name} only` };
+  // terms.json lists terms newest first
+  const last = terms.all.find(name => courseTerms.includes(name));
+  return { offered: false, other: null, last, label: last ? `Last offered ${last}` : 'Not offered recently' };
+};

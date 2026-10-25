@@ -38,6 +38,8 @@ const Schedule = () => {
   const [semester, setSemester] = useState(null);
   // a schedule opened from a share link (?s=...), shown read-only until copied or dismissed
   const [shared, setShared] = useState(null);
+  // a course to add once the planner has switched to the term it runs in
+  const [pendingCourse, setPendingCourse] = useState(null);
 
   useEffect(() => {
     const newest = SCHEDULE_SEMESTERS[SCHEDULE_SEMESTERS.length - 1];
@@ -129,6 +131,13 @@ const Schedule = () => {
             setSemester={(option) => { setShared(null); setSemester(option); }}
             shared={shared}
             onLeaveShared={leaveShared}
+            pendingCourse={pendingCourse}
+            onPlanInTerm={(option, course) => {
+              setPendingCourse(course);
+              setShared(null);
+              setSemester(option);
+            }}
+            onPendingAdded={() => setPendingCourse(null)}
             {...searchFilters}
           />
         )}
@@ -139,12 +148,19 @@ const Schedule = () => {
 
 const shortDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateFilter, courses: searchResults, filters }) => {
+const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pendingCourse, onPlanInTerm, onPendingAdded, updateFilter, courses: searchResults, filters }) => {
   const toast = useToast();
   const schedule = useSchedule(semester, { shared });
   const { courses, options, picks, blocks, meetings, exams, dates, activeId, setActiveId, readOnly } = schedule;
 
   const [activeType, setActiveType] = useState(null);
+
+  // arriving from "Plan it for <term>": add the course this planner was opened for
+  useEffect(() => {
+    if (!pendingCourse) return;
+    schedule.addCourse(pendingCourse).catch(console.error);
+    onPendingAdded();
+  }, []);
   const [hoveredCrns, setHoveredCrns] = useState(null);
   const [editing, setEditing] = useState(null);      // {id, anchor} of the block being edited
   const [ghostMenu, setGhostMenu] = useState(null);  // {ghost, anchor} for stacked sections
@@ -540,6 +556,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateF
         semester={semester}
         inPlan={Boolean(details && courses.some(c => c.detailId === details.detailId))}
         onAdd={(course) => { schedule.addCourse(course); setDetails(null); }}
+        onPlanInTerm={(option, course) => { setDetails(null); onPlanInTerm(option, course); }}
         onClose={() => setDetails(null)}
       />
     </div>

@@ -3,7 +3,7 @@ import { getSections } from '@/lib/sections';
 import { getBuildId } from '@/lib/localSearch';
 import { semesterStorageKey } from '@/lib/terms';
 import { examsFor } from '@/lib/termData';
-import { choose, defaultPick, isTimed, nextColor, toOptions, courseName } from '@/lib/schedule';
+import { choose, defaultPick, isTimed, nextColor, pickOnlyChoices, toOptions, courseName } from '@/lib/schedule';
 
 const hasFullCourseData = course => course?.gpa != null && Array.isArray(course.gened);
 
@@ -150,7 +150,7 @@ export const useSchedule = (semester, { shared = null } = {}) => {
     setCourses(previous => previous.some(c => c.detailId === full.detailId)
       ? previous : [...previous, { ...full, colorIndex: nextColor(usedColors()) }]);
     const first = defaultPick(sections, [...meetings.filter(m => m.timed), ...blocks]);
-    setPicks(previous => ({ ...previous, [full.detailId]: first == null ? [] : [first] }));
+    setPicks(previous => ({ ...previous, [full.detailId]: first == null ? [] : pickOnlyChoices([first], sections) }));
     setActiveId(full.detailId);
   }, [courses, blocks, meetings, semester.code]);
 

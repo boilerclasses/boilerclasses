@@ -121,6 +121,16 @@ export const defaultPick = (options, busy = []) => {
   return (ranked.find(o => o.type === firstType && fits(o)) ?? ranked[0])?.crn ?? null;
 };
 
+// Fill in every type that has only one section to choose from (a lone recitation).
+export const pickOnlyChoices = (picked, options) => {
+  let result = picked;
+  for (const type of missingTypes(result, options)) {
+    const only = candidates(options, result, type);
+    if (only.length === 1) result = choose(result, options, only[0].crn);
+  }
+  return result;
+};
+
 // Two meetings clash when they share a day, overlap in time and run in overlapping weeks
 // (a first-half and a second-half course can share a slot).
 const datesOverlap = (a, b) =>
