@@ -99,8 +99,8 @@ const CourseSearch = ({ courses, semester, onSelect, searchTerm, updateFilter })
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          className="placeholder:text-tertiary text-primary text-xl bg-super w-full pb-2 border-b-2 border-[rgb(var(--background-opposite))] focus:outline-none focus:border-blue-500 transition duration-300"
-          placeholder="Search for courses..."
+          className="placeholder:text-tertiary text-primary text-sm bg-background w-full rounded-xl px-3 py-2.5 border border-[rgb(var(--background-secondary-color))] focus:outline-none focus:border-blue-500 transition duration-300"
+          placeholder="Add a course (e.g. CS 180, calculus)"
         />
       </div>
 
