@@ -4,7 +4,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { Inter } from 'next/font/google';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useBreakpointValue, useToast } from '@chakra-ui/react';
+import {
+  AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay,
+  useBreakpointValue, useToast,
+} from '@chakra-ui/react';
 
 import { useSearchFilters } from '@/hooks/useSearchFilters';
 import { useSchedule, restoreFullCourse } from '@/hooks/useSchedule';
@@ -165,6 +168,8 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
   const [editing, setEditing] = useState(null);      // {id, anchor} of the block being edited
   const [ghostMenu, setGhostMenu] = useState(null);  // {ghost, anchor} for stacked sections
   const [details, setDetails] = useState(null);      // course shown in the drawer
+  const [confirmRemove, setConfirmRemove] = useState(null); // detailId of a course to remove
+  const cancelRemoveRef = useRef(null);
   const isMobile = useBreakpointValue({ base: true, md: false }, { ssr: false });
   const [mobileDay, setMobileDay] = useState(() => WEEKDAYS[(new Date().getDay() + 6) % 7] ?? 'Mon');
   const [capturing, setCapturing] = useState(false);
@@ -278,9 +283,30 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
     // open the editor on the new block once it has rendered
     requestAnimationFrame(() => {
       const element = calendarRef.current?.querySelector(`[data-block-id="${id}"]`) ?? calendarRef.current;
-      setEditing({ id, anchor: element });
+      setEditing({ id, anchor: element, isNew: true });
     });
   }, [schedule.addBlock]);
+
+  // Delete/Backspace removes what's selected: a personal block at once, a class after
+  // confirming. Ignored while typing.
+  useEffect(() => {
+    if (readOnly) return;
+    const onKey = (event) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      if (details || confirmRemove) return;
+      if (editing) {
+        event.preventDefault();
+        schedule.removeBlock(editing.id);
+        setEditing(null);
+      } else if (activeId) {
+        event.preventDefault();
+        setConfirmRemove(activeId);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readOnly, editing, activeId, details, confirmRemove, schedule.removeBlock]);
 
   // the image is the week as it is: no picker, hover or open course
   const saveImage = async () => {
@@ -413,7 +439,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
             readOnly={readOnly}
             isReady={schedule.isReady}
             onSelect={setActiveId}
-            onRemove={schedule.removeCourse}
+            onRemove={setConfirmRemove}
             onDetails={setDetails}
             renderPicker={(course, courseOptions) => (
               <SectionPicker
@@ -501,7 +527,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
           )}
           {!readOnly && (
             <p className='px-1 text-xs text-tertiary md:flex-none'>
-              Tip: drag on empty space to block off time for work, clubs or the gym.
+              Tip: drag on empty space to block off time for work, clubs or the gym. Select a block or class and press Delete to remove it.
             </p>
           )}
         </main>
@@ -513,6 +539,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
           block={editingBlock}
           anchor={editing.anchor}
           readOnly={readOnly}
+          isNew={Boolean(editing.isNew)}
           onChange={(changes) => schedule.updateBlock(editingBlock.id, changes)}
           onDelete={() => { schedule.removeBlock(editingBlock.id); setEditing(null); }}
           onClose={() => setEditing(null)}
@@ -550,6 +577,39 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
           </div>
         </FloatingCard>
       )}
+
+      <AlertDialog
+        isOpen={Boolean(confirmRemove)}
+        leastDestructiveRef={cancelRemoveRef}
+        onClose={() => setConfirmRemove(null)}
+        isCentered
+      >
+        <AlertDialogOverlay bg='blackAlpha.500'>
+          <AlertDialogContent bg='rgb(var(--background-color))' color='rgb(var(--text-color))' mx={4}>
+            <AlertDialogHeader fontSize='lg'>
+              Remove {(() => { const c = courses.find(x => x.detailId === confirmRemove); return c && schedule.isReady(c) ? courseName(c) : 'this course'; })()}?
+            </AlertDialogHeader>
+            <AlertDialogBody className='text-sm text-secondary'>
+              It and the sections you picked come off your {semester.name} schedule. You can add it again from search.
+            </AlertDialogBody>
+            <AlertDialogFooter className='gap-2'>
+              <button
+                ref={cancelRemoveRef}
+                onClick={() => setConfirmRemove(null)}
+                className='rounded-full border border-[rgb(var(--background-secondary-color))] px-4 py-1.5 text-sm hover:bg-background-secondary transition'
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { schedule.removeCourse(confirmRemove); setConfirmRemove(null); }}
+                className='rounded-full bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition'
+              >
+                Remove
+              </button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
 
       <CourseDetailsDrawer
         course={details}

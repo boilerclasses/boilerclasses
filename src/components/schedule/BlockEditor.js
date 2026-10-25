@@ -4,10 +4,11 @@ import FloatingCard from './FloatingCard';
 import { EVENT_COLORS, WEEK, eventColor, formatRange } from '@/lib/schedule';
 
 // Name, colour, days and delete for a personal block on the calendar.
-const BlockEditor = ({ block, anchor, readOnly, onChange, onDelete, onClose }) => {
+// A new block focuses its name; an existing one doesn't, so Delete/Backspace removes it.
+const BlockEditor = ({ block, anchor, readOnly, isNew, onChange, onDelete, onClose }) => {
   const inputRef = useRef(null);
   useEffect(() => {
-    if (!readOnly) inputRef.current?.focus();
+    if (!readOnly && isNew) inputRef.current?.focus();
   }, [block.id]);
 
   const toggleDay = (day) => {
