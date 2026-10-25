@@ -2,7 +2,7 @@ import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useState } 
 import { IoIosWarning } from 'react-icons/io';
 import { WEEK, WEEKDAYS, eventColor, formatRange, formatTime, layoutDay, shortType } from '@/lib/schedule';
 
-const HOUR = 48; // px per hour
+const MIN_HOUR = 48; // px per hour; rows stretch to fill a taller calendar
 const SNAP = 15; // minutes
 const GUTTER = 52; // px for the hour labels
 
@@ -80,7 +80,7 @@ const EventCard = ({ item, dates, dimmed, highlighted, onPointerDown, onClick, o
 // Notion-style week view. Meetings and blocks are {days, start, end} in minutes.
 const WeekCalendar = forwardRef(({
   meetings = [], blocks = [], ghosts = [], dates = null, days: onlyDays = null,
-  activeId = null, hoveredCrns = null, readOnly = false, caption = null,
+  activeId = null, hoveredCrns = null, readOnly = false, caption = null, className = '',
   onMeetingClick, onGhostClick, onGhostHover,
   onBlockCreate, onBlockChange, onBlockClick,
 }, ref) => {
@@ -102,6 +102,32 @@ const WeekCalendar = forwardRef(({
     return [Math.floor(first / 60), Math.ceil(last / 60)];
   }, [meetings, blocks, ghosts]);
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
+
+  // hour rows fill the space the page gives the calendar, never shorter than MIN_HOUR
+  const rootRef = useRef(null);
+  const headerRef = useRef(null);
+  const [HOUR, setHour] = useState(MIN_HOUR);
+  const setRoot = (element) => {
+    rootRef.current = element;
+    if (typeof ref === 'function') ref(element);
+    else if (ref) ref.current = element;
+  };
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    const fit = () => {
+      // everything above the hour grid: the export caption and the day headers
+      const above = headerRef.current
+        ? headerRef.current.getBoundingClientRect().bottom - root.getBoundingClientRect().top - root.clientTop
+        : 0;
+      const available = root.clientHeight - above;
+      setHour(Math.max(MIN_HOUR, Math.floor(available / hours.length)));
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(root);
+    fit();
+    return () => observer.disconnect();
+  }, [hours.length]);
   const toY = (minutes) => ((minutes - startHour * 60) / 60) * HOUR;
 
   // the block being dragged shows where it will land
@@ -116,7 +142,7 @@ const WeekCalendar = forwardRef(({
     const raw = startHour * 60 + ((event.clientY - rect.top) / HOUR) * 60;
     const minutes = Math.min(endHour * 60, Math.max(startHour * 60, Math.round(raw / SNAP) * SNAP));
     return { dayIndex, minutes };
-  }, [days, startHour, endHour]);
+  }, [days, startHour, endHour, HOUR]);
 
   // drag state lives in a ref so pointer handlers always see the latest, and mirrors to
   // state for rendering
@@ -222,7 +248,8 @@ const WeekCalendar = forwardRef(({
   })() : null;
 
   return (
-    <div ref={ref} className='w-full bg-background rounded-xl border border-[rgb(var(--background-secondary-color))] overflow-hidden'>
+    // its own scroll container, so the day headers stay put while the hours scroll
+    <div ref={setRoot} className={`w-full bg-background rounded-xl border border-[rgb(var(--background-secondary-color))] overflow-auto ${className}`}>
       {caption && (
         <div className='flex items-baseline justify-between px-4 pt-3 pb-1'>
           <span className='text-base font-semibold text-primary'>{caption}</span>
@@ -230,7 +257,7 @@ const WeekCalendar = forwardRef(({
         </div>
       )}
       {/* day headers */}
-      <div className='flex border-b border-[rgb(var(--background-secondary-color))] bg-background sticky top-0 z-30'>
+      <div ref={headerRef} className='flex border-b border-[rgb(var(--background-secondary-color))] bg-background sticky top-0 z-30'>
         <div style={{ width: GUTTER }} className='shrink-0' />
         {days.map(day => (
           <div key={day} className='flex-1 py-2 text-center text-xs font-medium uppercase tracking-wide text-tertiary'>

@@ -123,7 +123,7 @@ const SectionPicker = ({ course, options, picked, activeType, setActiveType, con
         {shown.length} {shortType(activeType).toLowerCase()} option{shown.length === 1 ? '' : 's'}
         {linked && classId && typeRank(activeType) > typeRank(types[0]) ? ' for your lecture' : ''} · hover to preview on the calendar
       </p>
-      <div className='flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto pr-1'>
+      <div className='flex flex-col gap-1.5'>
         {shown.map(option => {
           const isPicked = picked.includes(option.crn);
           return (

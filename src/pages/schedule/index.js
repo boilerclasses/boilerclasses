@@ -120,7 +120,7 @@ const Schedule = () => {
         <link rel="canonical" href="https://boilerclasses.com/schedule" />
       </Head>
 
-      <div className={`min-h-screen bg-super text-primary ${inter.className}`}>
+      <div className={`min-h-screen md:min-h-0 bg-super text-primary ${inter.className}`}>
         {/* remount per term so every piece of schedule state reloads from that term's storage */}
         {semester && (
           <SchedulePlanner
@@ -133,7 +133,6 @@ const Schedule = () => {
           />
         )}
       </div>
-      <Footer />
     </>
   );
 };
@@ -317,9 +316,11 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateF
   const mobileDays = usedWeekend ? WEEK : WEEKDAYS;
 
   return (
-    <div className='mx-auto max-w-[1600px] px-4 pb-10'>
+    // From md up the planner fills the window like a calendar app: the sidebar and the
+    // calendar each scroll on their own, so the calendar stays in view while picking.
+    <div className='mx-auto max-w-[1600px] px-4 pb-6 md:pb-4 md:h-[100dvh] md:flex md:flex-col'>
       {/* top bar */}
-      <header className='flex flex-wrap items-center gap-3 py-4 pr-12'>
+      <header className='flex flex-wrap items-center gap-3 py-4 pr-12 md:flex-none'>
         <Link href='/' className='flex items-center gap-2'>
           <img src='/boilerclasses-FULL.png' className='h-7 w-7' alt='BoilerClasses Logo' />
           <span className='font-semibold'>BoilerClasses</span>
@@ -357,7 +358,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateF
       </header>
 
       {readOnly && (
-        <div className='mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-yellow-600/40 bg-yellow-600/10 px-4 py-3 text-sm'>
+        <div className='mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-yellow-600/40 bg-yellow-600/10 px-4 py-3 text-sm md:flex-none'>
           <span className='flex-1 min-w-[200px]'>
             You&apos;re viewing a shared {semester.name} schedule. Copy it to start planning from it, or go back to yours.
           </span>
@@ -376,9 +377,9 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateF
         </div>
       )}
 
-      <div className='flex flex-col lg:flex-row gap-4'>
+      <div className='flex flex-col md:flex-row gap-4 md:flex-1 md:min-h-0'>
         {/* sidebar */}
-        <aside className='flex flex-col gap-4 lg:w-[360px] lg:shrink-0'>
+        <aside className='flex flex-col gap-4 md:w-[300px] lg:w-[340px] md:shrink-0 md:overflow-y-auto md:pr-1 md:pb-2'>
           {!readOnly && (
             <CourseSearch
               courses={searchResults}
@@ -440,10 +441,11 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateF
               )}
             </section>
           )}
+          <div className='hidden md:block mt-auto'><Footer /></div>
         </aside>
 
         {/* calendar */}
-        <main className='flex-1 min-w-0 flex flex-col gap-2'>
+        <main className='flex-1 min-w-0 flex flex-col gap-2 md:min-h-0'>
           {isMobile && (
             <div className='flex gap-1'>
               {mobileDays.map(day => (
@@ -463,6 +465,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateF
             blocks={calendarBlocks}
             ghosts={ghosts}
             dates={dates}
+            className={capturing ? 'shrink-0' : 'md:flex-1 md:min-h-0'}
             days={isMobile && !capturing ? [mobileDay] : null}
             caption={capturing ? `${semester.name} schedule` : null}
             activeId={activeId}
@@ -476,17 +479,18 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateF
             onBlockClick={(id, anchor) => setEditing({ id, anchor })}
           />
           {unscheduled.length > 0 && (
-            <p className='px-1 text-xs text-tertiary'>
+            <p className='px-1 text-xs text-tertiary md:flex-none'>
               Not on the calendar (no set time): {[...new Set(unscheduled.map(m => `${courseName(m.course)} ${shortType(m.type)}${m.room ? ` (${m.room})` : ''}`))].join(', ')}
             </p>
           )}
           {!readOnly && (
-            <p className='px-1 text-xs text-tertiary'>
+            <p className='px-1 text-xs text-tertiary md:flex-none'>
               Tip: drag on empty space to block off time for work, clubs or the gym.
             </p>
           )}
         </main>
       </div>
+      <div className='md:hidden'><Footer /></div>
 
       {editingBlock && (
         <BlockEditor
