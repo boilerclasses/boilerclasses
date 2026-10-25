@@ -47,7 +47,7 @@ export const useSchedule = (semester, { shared = null } = {}) => {
   const readOnly = Boolean(shared);
 
   const [courses, setCourses] = useState(() => {
-    if (shared) return shared.courses.map(({ detailId, colorIndex }) => ({ detailId, colorIndex }));
+    if (shared) return shared.courses.map(({ detailId, colorIndex, name }) => ({ detailId, colorIndex, name }));
     const saved = load(key('pinnedCourses'), []);
     // courses saved before colours were stored keep the order-based colour they had
     return saved.map(({ initialPin, tmp_inc, scrollToMeeting, ...course }, index) =>
@@ -188,7 +188,12 @@ export const useSchedule = (semester, { shared = null } = {}) => {
   // the plan in the shape share links and the calendar feed use
   const snapshot = useMemo(() => ({
     term: semester.code,
-    courses: courses.map(({ detailId, colorIndex }) => ({ detailId, colorIndex, crns: picks?.[detailId] ?? [] })),
+    courses: courses.map(course => ({
+      detailId: course.detailId,
+      name: course.subjectCode ? courseName(course) : course.name,
+      colorIndex: course.colorIndex,
+      crns: picks?.[course.detailId] ?? [],
+    })),
     blocks,
   }), [semester.code, courses, picks, blocks]);
 

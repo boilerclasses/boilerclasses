@@ -80,7 +80,7 @@ const EventCard = ({ item, dates, dimmed, highlighted, onPointerDown, onClick, o
 // Notion-style week view. Meetings and blocks are {days, start, end} in minutes.
 const WeekCalendar = forwardRef(({
   meetings = [], blocks = [], ghosts = [], dates = null, days: onlyDays = null,
-  activeId = null, hoveredCrns = null, readOnly = false,
+  activeId = null, hoveredCrns = null, readOnly = false, caption = null,
   onMeetingClick, onGhostClick, onGhostHover,
   onBlockCreate, onBlockChange, onBlockClick,
 }, ref) => {
@@ -223,6 +223,12 @@ const WeekCalendar = forwardRef(({
 
   return (
     <div ref={ref} className='w-full bg-background rounded-xl border border-[rgb(var(--background-secondary-color))] overflow-hidden'>
+      {caption && (
+        <div className='flex items-baseline justify-between px-4 pt-3 pb-1'>
+          <span className='text-base font-semibold text-primary'>{caption}</span>
+          <span className='text-xs text-tertiary'>boilerclasses.com/schedule</span>
+        </div>
+      )}
       {/* day headers */}
       <div className='flex border-b border-[rgb(var(--background-secondary-color))] bg-background sticky top-0 z-30'>
         <div style={{ width: GUTTER }} className='shrink-0' />

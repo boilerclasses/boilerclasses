@@ -8,11 +8,13 @@ import { useBreakpointValue, useToast } from '@chakra-ui/react';
 
 import { useSearchFilters } from '@/hooks/useSearchFilters';
 import { useSchedule, restoreFullCourse } from '@/hooks/useSchedule';
-import { SCHEDULE_SEMESTERS, migrateScheduleStorage } from '@/lib/terms';
+import { SCHEDULE_SEMESTERS, migrateScheduleStorage, semesterStorageKey } from '@/lib/terms';
+import { decodeSchedule, encodeSchedule } from '@/lib/scheduleShare';
+import { convertTo12HourFormat } from '@/lib/timeUtils';
 import { EXAM_LABELS } from '@/lib/termData';
 import {
   WEEK, WEEKDAYS, candidates, choose, clashes, courseName, courseTypes, eventColor, formatRange,
-  isTimed, missingTypes, shortType, toMinutes,
+  isTimed, missingTypes, shortType, toClock, toMinutes,
 } from '@/lib/schedule';
 import CourseSearch from '@/components/schedule/courseSearch';
 import WeekCalendar from '@/components/schedule/WeekCalendar';
@@ -21,6 +23,7 @@ import SectionPicker from '@/components/schedule/SectionPicker';
 import BlockEditor from '@/components/schedule/BlockEditor';
 import FloatingCard from '@/components/schedule/FloatingCard';
 import CourseDetailsDrawer from '@/components/schedule/CourseDetailsDrawer';
+import ExportMenu from '@/components/schedule/ExportMenu';
 import Footer from '@/components/footer';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -33,9 +36,18 @@ const Schedule = () => {
   // null until mounted: the page is prerendered without localStorage, so the saved term
   // (and every per-term planner initializer) is only read on the client
   const [semester, setSemester] = useState(null);
+  // a schedule opened from a share link (?s=...), shown read-only until copied or dismissed
+  const [shared, setShared] = useState(null);
 
   useEffect(() => {
     const newest = SCHEDULE_SEMESTERS[SCHEDULE_SEMESTERS.length - 1];
+    const plan = decodeSchedule(new URLSearchParams(window.location.search).get('s') ?? '');
+    const sharedTerm = plan && SCHEDULE_SEMESTERS.find(option => option.code === plan.term);
+    if (sharedTerm) {
+      setShared(plan);
+      setSemester(sharedTerm);
+      return;
+    }
     let saved = null;
     try {
       migrateScheduleStorage();
@@ -48,13 +60,34 @@ const Schedule = () => {
   }, []);
 
   useEffect(() => {
-    if (!semester) return;
+    if (!semester || shared) return;
     try {
       localStorage.setItem(SEMESTER_STORAGE_KEY, semester.code);
     } catch (error) {
       console.error('Error saving schedule semester:', error);
     }
-  }, [semester]);
+  }, [semester, shared]);
+
+  // leave a shared schedule for your own plan, optionally saving the shared one as it
+  const leaveShared = (copyIt) => {
+    if (copyIt) {
+      const key = (name) => semesterStorageKey(name, shared.term);
+      const existing = JSON.parse(localStorage.getItem(key('pinnedCourses')) || '[]');
+      if (existing.length && !window.confirm(`Replace your ${semester.name} plan (${existing.length} course${existing.length === 1 ? '' : 's'}) with this one?`)) return;
+      localStorage.setItem(key('pinnedCourses'), JSON.stringify(shared.courses.map(({ detailId, colorIndex, name }) => ({ detailId, colorIndex, name }))));
+      localStorage.setItem(key('sectionPicks'), JSON.stringify(Object.fromEntries(shared.courses.map(c => [c.detailId, c.crns]))));
+      localStorage.setItem(key('scheduleBlocks'), JSON.stringify(shared.blocks.map(({ id, ...block }) => ({ ...block, id: Math.random().toString(36).slice(2, 10) }))));
+      localStorage.setItem(SEMESTER_STORAGE_KEY, shared.term);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('s');
+    window.history.replaceState(null, '', url);
+    setShared(null);
+    if (!copyIt) {
+      const saved = localStorage.getItem(SEMESTER_STORAGE_KEY);
+      setSemester(SCHEDULE_SEMESTERS.find(option => option.code === saved) ?? semester);
+    }
+  };
 
   const description = 'BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more.';
   const image = 'https://opengraph.b-cdn.net/production/images/0413e8c7-edd6-4344-bc7a-8fc27d840783.png?token=XWki0pXYsNvGaeuQwxsWOq1GkgkT-SJQTrP2LtDWKyE&height=776&width=1200&expires=33268877667';
@@ -91,9 +124,11 @@ const Schedule = () => {
         {/* remount per term so every piece of schedule state reloads from that term's storage */}
         {semester && (
           <SchedulePlanner
-            key={semester.code}
+            key={`${semester.code}-${shared ? 'shared' : 'mine'}`}
             semester={semester}
-            setSemester={setSemester}
+            setSemester={(option) => { setShared(null); setSemester(option); }}
+            shared={shared}
+            onLeaveShared={leaveShared}
             {...searchFilters}
           />
         )}
@@ -105,9 +140,9 @@ const Schedule = () => {
 
 const shortDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-const SchedulePlanner = ({ semester, setSemester, updateFilter, courses: searchResults, filters }) => {
+const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, updateFilter, courses: searchResults, filters }) => {
   const toast = useToast();
-  const schedule = useSchedule(semester);
+  const schedule = useSchedule(semester, { shared });
   const { courses, options, picks, blocks, meetings, exams, dates, activeId, setActiveId, readOnly } = schedule;
 
   const [activeType, setActiveType] = useState(null);
@@ -117,6 +152,7 @@ const SchedulePlanner = ({ semester, setSemester, updateFilter, courses: searchR
   const [details, setDetails] = useState(null);      // course shown in the drawer
   const isMobile = useBreakpointValue({ base: true, md: false }, { ssr: false });
   const [mobileDay, setMobileDay] = useState(() => WEEKDAYS[(new Date().getDay() + 6) % 7] ?? 'Mon');
+  const [capturing, setCapturing] = useState(false);
   const calendarRef = useRef(null);
 
   const activeCourse = courses.find(c => c.detailId === activeId) ?? null;
@@ -231,6 +267,50 @@ const SchedulePlanner = ({ semester, setSemester, updateFilter, courses: searchR
     });
   }, [schedule.addBlock]);
 
+  // the image is the week as it is: no picker, hover or open course
+  const saveImage = async () => {
+    setActiveId(null);
+    setHoveredCrns(null);
+    setCapturing(true);
+    try {
+      // let the calendar re-render without the picker before taking the picture
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const { toPng } = await import('html-to-image');
+      const node = calendarRef.current;
+      const url = await toPng(node, { pixelRatio: 2, backgroundColor: getComputedStyle(node).backgroundColor });
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${semester.name} schedule.png`;
+      link.click();
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  // the PDF export still takes the old lecture shape (military times, "12:30 PM" strings)
+  const military = (minutes) => Math.floor(minutes / 60) * 100 + (minutes % 60);
+  const savePdf = async () => {
+    // jsPDF and its embedded fonts are large, so they load only when asked for
+    const { openPDFInNewTab } = await import('@/lib/pdf');
+    openPDFInNewTab(meetings.map(m => ({
+      name: courseName(m.course),
+      type: m.type,
+      day: m.timed ? m.days : ['None'],
+      start: m.timed ? military(m.start) : 0,
+      end: m.timed ? military(m.end) : 0,
+      startTime: m.timed ? convertTo12HourFormat(toClock(m.start)) : 'No Meeting Time',
+      room: m.room,
+      instructors: m.instructors,
+      crn: m.crn,
+      courseDetails: m.course,
+    })), semester.name);
+  };
+
+  const shareCode = encodeSchedule(schedule.snapshot);
+  const origin = typeof window === 'undefined' ? 'https://boilerclasses.com' : window.location.origin;
+  const shareUrl = `${origin}/schedule?s=${shareCode}`;
+  const feedUrl = `${origin}/api/calendar.ics?s=${shareCode}`;
+
   const editingBlock = editing && blocks.find(b => b.id === editing.id);
   const totalCredits = courses.filter(schedule.isReady).reduce((sum, c) => [sum[0] + c.credits[0], sum[1] + c.credits[1]], [0, 0]);
   const usedWeekend = [...timedMeetings, ...blocks].some(e => e.days.some(d => !WEEKDAYS.includes(d)));
@@ -265,8 +345,36 @@ const SchedulePlanner = ({ semester, setSemester, updateFilter, courses: searchR
           {totalCredits[0] === totalCredits[1] ? totalCredits[0] : `${totalCredits[0]}–${totalCredits[1]}`} credits
         </span>
         <div className='flex-1' />
-        <div id='schedule-actions' className='flex items-center gap-2' />
+        <ExportMenu
+          shareUrl={shareUrl}
+          feedUrl={feedUrl}
+          termName={semester.name}
+          hasBlocks={blocks.length > 0}
+          disabled={!courses.length && !blocks.length}
+          onImage={saveImage}
+          onPdf={savePdf}
+        />
       </header>
+
+      {readOnly && (
+        <div className='mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-yellow-600/40 bg-yellow-600/10 px-4 py-3 text-sm'>
+          <span className='flex-1 min-w-[200px]'>
+            You&apos;re viewing a shared {semester.name} schedule. Copy it to start planning from it, or go back to yours.
+          </span>
+          <button
+            onClick={() => onLeaveShared(true)}
+            className='rounded-full bg-yellow-600 px-3 py-1 text-white font-medium hover:bg-yellow-700 transition'
+          >
+            Copy to my planner
+          </button>
+          <button
+            onClick={() => onLeaveShared(false)}
+            className='rounded-full border border-[rgb(var(--background-secondary-color))] bg-background px-3 py-1 hover:bg-background-secondary transition'
+          >
+            Back to my schedule
+          </button>
+        </div>
+      )}
 
       <div className='flex flex-col lg:flex-row gap-4'>
         {/* sidebar */}
@@ -355,7 +463,8 @@ const SchedulePlanner = ({ semester, setSemester, updateFilter, courses: searchR
             blocks={calendarBlocks}
             ghosts={ghosts}
             dates={dates}
-            days={isMobile ? [mobileDay] : null}
+            days={isMobile && !capturing ? [mobileDay] : null}
+            caption={capturing ? `${semester.name} schedule` : null}
             activeId={activeId}
             hoveredCrns={hoveredCrns}
             readOnly={readOnly}
