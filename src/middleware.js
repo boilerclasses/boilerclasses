@@ -30,8 +30,14 @@ export default async function middleware(req) {
 
   const subdomainData = subdomains.find(d => d.subdomain === subdomain);
 
+  // permanently redirect to the same page under a path on the main site, so
+  // existing links and bookmarks keep working
   if (subdomainData) {
-    return NextResponse.rewrite(new URL(`/${subdomain}${url.pathname}`, req.url));
+    // behind Cloudflare and nginx the request itself is plain http
+    const protocol = req.headers.get("x-forwarded-proto") || url.protocol.replace(":", "");
+    const path = url.pathname === "/" ? "" : url.pathname;
+    const target = `${protocol}://${hostname.slice(subdomain.length + 1)}/${subdomain}${path}${url.search}`;
+    return NextResponse.redirect(target, 301);
   }
 
   return new Response(null, { status: 404 });

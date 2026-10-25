@@ -1,5 +1,5 @@
-// The theme lives in a cookie on the parent domain so boilerclasses.com and
-// schedule.boilerclasses.com share it (localStorage is per subdomain).
+// The theme lives in a cookie on the parent domain so every boilerclasses.com
+// subdomain shares it (localStorage is per subdomain).
 // localStorage is still read for preferences saved before the cookie existed.
 
 const ONE_YEAR = 60 * 60 * 24 * 365;

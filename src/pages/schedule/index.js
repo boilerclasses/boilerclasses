@@ -1,4 +1,4 @@
-// schedule.boilerclasses.com
+// boilerclasses.com/schedule (schedule.boilerclasses.com redirects here)
 
 // Group external imports
 import Head from 'next/head';
@@ -79,7 +79,7 @@ const Schedule = () => {
         <meta name='og:postal-code' content='47906' />
         <meta name='og:postal-code' content='47907' />
 
-        <meta property="og:url" content="https://schedule.boilerclasses.com" />
+        <meta property="og:url" content="https://boilerclasses.com/schedule" />
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Schedule Assistant | BoilerClasses" />
         <meta property="og:description" content="BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more." />
@@ -87,12 +87,12 @@ const Schedule = () => {
 
         <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:domain" content="boilerclasses.com" />
-        <meta property="twitter:url" content="https://schedule.boilerclasses.com" />
+        <meta property="twitter:url" content="https://boilerclasses.com/schedule" />
         <meta name="twitter:title" content="Schedule Assistant | BoilerClasses" />
         <meta name="twitter:description" content="BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more." />
         <meta name="twitter:image" content="https://opengraph.b-cdn.net/production/images/0413e8c7-edd6-4344-bc7a-8fc27d840783.png?token=XWki0pXYsNvGaeuQwxsWOq1GkgkT-SJQTrP2LtDWKyE&height=776&width=1200&expires=33268877667" />
 
-        <link rel="canonical" href="https://schedule.boilerclasses.com/" />
+        <link rel="canonical" href="https://boilerclasses.com/schedule" />
       </Head>
 
       {/* Logo */}
