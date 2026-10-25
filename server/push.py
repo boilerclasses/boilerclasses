@@ -55,6 +55,11 @@ def overall_gpa(course):
           'totalSemCount': len(semesters)}
 
 
+def gpa_value(overall):
+  """overallGpa's GPA as a number for the search indexes, or None without grades."""
+  return float(overall['gpa']) if overall['gpa'] else None
+
+
 def main():
   parser = argparse.ArgumentParser(description="Load course data into Redis")
   parser.add_argument("--data", "-data", default="classes_out.json", dest="infile")
@@ -72,6 +77,9 @@ def main():
   pipe = client.pipeline(transaction=False)
   for count, course in enumerate(tqdm(data), start=1):
     course["overallGpa"] = overall_gpa(course)
+    gpa = gpa_value(course["overallGpa"])
+    if gpa is not None:
+      course["averageGpa"] = gpa
     course_key = f"classes:{count}"
     pipe.execute_command("JSON.SET", course_key, "$", json.dumps(course))
     if count % 500 == 0:
@@ -95,7 +103,8 @@ def main():
               "$.credits[0]", "AS", "creditMin", "NUMERIC", 
               "$.credits[1]", "as", "creditMax", "NUMERIC", 
               "$.gened[*]", "AS", "gened", "TAG",
-              "$.sched[*]", "AS", "sched", "TAG")
+              "$.sched[*]", "AS", "sched", "TAG",
+              "$.averageGpa", "AS", "averageGpa", "NUMERIC")
 
   # Kept separate so the lexical schema and queries are unchanged. It starts empty;
   # embed.py fills it in the background, and hashes are indexed as they're added.
@@ -111,6 +120,7 @@ def main():
     "courseCode", "NUMERIC",
     "creditMin", "NUMERIC",
     "creditMax", "NUMERIC",
+    "averageGpa", "NUMERIC",
     "popularity", "NUMERIC",
     "intro", "NUMERIC",
     VECTOR_FIELD_NAME,

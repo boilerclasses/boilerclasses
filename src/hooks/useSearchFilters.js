@@ -9,6 +9,7 @@ const DEFAULT_FILTERS = {
   semesters: [],
   genEds: [],
   credits: { min: 0, max: 18 },
+  gpa: { min: 0, max: 4 },
   levels: [100, 200, 300, 400, 500, 600, 700, 800, 900],
   scheduleTypes: [
     "Clinic",
@@ -64,6 +65,8 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
       if (savedFilters) {
         const parsedFilters = JSON.parse(savedFilters);
         return {
+          // Filters added since the session's filters were saved start at their defaults
+          ...DEFAULT_FILTERS,
           ...parsedFilters,
           // Always ensure searchTerm from URL takes precedence
           searchTerm: query.q || parsedFilters.searchTerm || '',
@@ -158,7 +161,7 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
 
   // Search function
   const search = async (signal) => {
-    let { searchTerm, subjects, semesters, genEds, credits, levels, scheduleTypes } = filters;
+    let { searchTerm, subjects, semesters, genEds, credits, gpa, levels, scheduleTypes } = filters;
     let wordMatches = 0;
     const searchStartedAt = changedAt.current ?? performance.now();
     setSemanticSearching(false);
@@ -178,6 +181,8 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
       cmax: credits.max,
       levels,
       sched: scheduleTypes,
+      // Left out at the full range, so courses without grades still show
+      ...(gpa.min > 0 || gpa.max < 4 ? { gmin: gpa.min, gmax: gpa.max } : {}),
     };
 
     try {
@@ -313,6 +318,8 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
     transformQuery(filters.searchTerm),
     filters.credits.min,
     filters.credits.max,
+    filters.gpa.min,
+    filters.gpa.max,
     filters.levels,
     filters.scheduleTypes,
   ]);

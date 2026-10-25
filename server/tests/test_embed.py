@@ -12,11 +12,11 @@ import embed
 from embeddings import EMBEDDING_DIM, VECTOR_FIELD_NAME
 
 
-def course(code, description, gpa=3.0):
+def course(code, description, gpa=None):
     return {
         'subjectCode': 'CS', 'courseCode': code, 'title': f'Course {code}',
         'description': description, 'terms': ['Fall 2026'], 'gened': [],
-        'sched': ['Lecture'], 'credits': [3, 3], 'gpa': gpa,
+        'sched': ['Lecture'], 'credits': [3, 3], 'gpa': gpa or {},
     }
 
 
@@ -45,7 +45,7 @@ class EmbedCacheTests(unittest.TestCase):
             self.assertEqual(len(hsets), 2)
 
             # grades aren't part of the embedded text
-            courses[0]['gpa'] = 3.9
+            courses[0]['gpa'] = {'Jane Doe': {'Fall 2025': [0] * 13 + [3.9]}}
             embedded, hsets = self.run_embed(directory, courses)
             self.assertEqual(embedded, 0)
             self.assertEqual(len(hsets), 2)

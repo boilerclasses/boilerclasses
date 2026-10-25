@@ -55,6 +55,8 @@ def build_filter_query(filters):
             f"(@creditMin:[{minimum} {maximum}] | "
             f"@creditMax:[{minimum} {maximum}])"
         )
+    if "gpa_min" in filters and "gpa_max" in filters:
+        clauses.append(f"@averageGpa:[{filters['gpa_min']} {filters['gpa_max']}]")
     return " ".join(clauses) or "*"
 
 
