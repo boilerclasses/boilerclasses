@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")"
 
 SHA=$(cat ../data.lock)
-curl -fsSL "https://boilerclasses.s3.amazonaws.com/snapshots/${SHA}.json" -o classes_out.json
+curl -fsSL "https://boilerclasses-bucket.s3.amazonaws.com/snapshots/${SHA}.json" -o classes_out.json
 
 if command -v sha256sum >/dev/null; then
   echo "${SHA}  classes_out.json" | sha256sum -c -
@@ -17,7 +17,7 @@ fi
 # sections.lock is created by the first pipeline run that has section data
 if [ -f ../sections.lock ]; then
   SHA=$(cat ../sections.lock)
-  curl -fsSL "https://boilerclasses.s3.amazonaws.com/snapshots/${SHA}.json" -o sections_out.json
+  curl -fsSL "https://boilerclasses-bucket.s3.amazonaws.com/snapshots/${SHA}.json" -o sections_out.json
   if command -v sha256sum >/dev/null; then
     echo "${SHA}  sections_out.json" | sha256sum -c -
   else

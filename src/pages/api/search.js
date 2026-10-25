@@ -1,4 +1,7 @@
-import { searchCourses } from "../../lib/redis"
+import { searchCodes, searchCourses } from "../../lib/redis"
+import { setCacheHeaders } from "../../lib/cache"
+import { orderByCourseCode } from "../../lib/courseOrder.mjs"
+import { nicknameCourses, queryVariants } from "../../lib/queryAliases.mjs"
 
 const cardFields = [
   'detailId', 'subjectCode', 'courseCode', 'title', 'credits',
@@ -34,10 +37,37 @@ export default async function handler(req, res) {
     const levels = param(req.query.levels);
     const sched = param(req.query.sched);
     const maxlim = param(req.query.maxlim, "100");
-    const results = await searchCourses(q, subjects.split(","), terms.split(","), gen.split(","), cmin, cmax, levels.split(","), sched.split(","), maxlim);
+    const filters = [subjects.split(","), terms.split(","), gen.split(","), cmin, cmax, levels.split(","), sched.split(",")];
+    // Same reading of the query as browser search (src/lib/courseSearch.mjs): pinned
+    // nicknames first, then each variant ("calculus 3", "calc 3") in order.
+    const pinned = nicknameCourses(q);
+    const variants = q ? queryVariants(q) : [q];
+    const [pinnedFound, firstFound] = await Promise.all([
+      pinned.length ? searchCodes(pinned, ...filters, maxlim) : { documents: [] },
+      searchCourses(variants[0], ...filters, maxlim),
+    ]);
+    // Other readings only matter when the first didn't fill the page
+    const full = pinnedFound.documents.length + firstFound.documents.length >= (Number(maxlim) || 100);
+    const variantsFound = [firstFound, ...(full ? [] : await Promise.all(
+      variants.slice(1).map(variant => searchCourses(variant, ...filters, maxlim)),
+    ))];
+    const code = document => `${document.value.subjectCode} ${document.value.courseCode}`;
+    const merged = [];
+    const seen = new Set();
+    for (const document of [
+      ...[...pinnedFound.documents].sort((a, b) => pinned.indexOf(code(a)) - pinned.indexOf(code(b))),
+      ...variantsFound.flatMap((found, i) => orderByCourseCode(found.documents, variants[i])),
+    ]) {
+      if (!seen.has(document.id)) {
+        seen.add(document.id);
+        merged.push(document);
+      }
+    }
+    const results = { total: merged.length, documents: merged.slice(0, Number(maxlim) || 100) };
     const courses = req.query.view === 'card'
       ? { ...results, documents: results.documents.map(summarizeSearchDocument) }
       : results;
+    setCacheHeaders(req, res);
     if (profile) {
       const searched = performance.now();
       const body = JSON.stringify({ courses });

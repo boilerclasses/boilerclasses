@@ -1,15 +1,19 @@
-import subprocess
-import os
-import json
-import redis
-from redis.commands.json.path import Path
-from tqdm import tqdm
-# from dotenv import load_dotenv
 import argparse
+import json
 import math
 from decimal import Decimal, ROUND_HALF_UP
+
+import redis
+from tqdm import tqdm
+
+from embeddings import (
+  EMBEDDING_DIM,
+  VECTOR_FIELD_NAME,
+  VECTOR_INDEX_NAME,
+  VECTOR_KEY_PREFIX,
+)
 from schema import validate_courses
-# load_dotenv()
+from search_index import write_search_index
 
 
 def overall_gpa(course):
@@ -50,34 +54,36 @@ def overall_gpa(course):
   return {'gpa': gpa, 'color': color, 'profCount': len(averages),
           'totalSemCount': len(semesters)}
 
-# REDIS_HOST = os.getenv('REDIS_HOST')
-# REDIS_PORT = os.getenv('REDIS_PORT')
-# REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
 
-parser = argparse.ArgumentParser(description='data files')
-parser.add_argument("-data", default="classes_out.json", dest="infile", help="which file to get data from")
+def main():
+  parser = argparse.ArgumentParser(description="Load course data into Redis")
+  parser.add_argument("--data", "-data", default="classes_out.json", dest="infile")
+  args = parser.parse_args()
 
-args = parser.parse_args()
+  with open(args.infile) as infile:
+    data = json.load(infile)
+  validate_courses(data, kind="harmonized", source=args.infile)
 
-# push all data
-count = 1
-f = open(args.infile)
-data = json.load(f)
-f.close()
-validate_courses(data, kind="harmonized", source=args.infile)
-# Validate the complete input before clearing any Redis data.
-r = redis.Redis(host='localhost', port=6379)
-r.flushall()
-for classData in tqdm(data):
-  classData['overallGpa'] = overall_gpa(classData)
-  key = "classes:" + str(count)
-  r.json().set(key, Path.root_path(), classData)
-  count += 1
+  client = redis.Redis(host="localhost", port=6379)
+  client.ping()
+  client.flushall()
 
-r.execute_command("FT.CONFIG", "SET", "MINPREFIX", "1")
+  print(f"Loading {len(data)} courses into Redis...")
+  pipe = client.pipeline(transaction=False)
+  for count, course in enumerate(tqdm(data), start=1):
+    course["overallGpa"] = overall_gpa(course)
+    course_key = f"classes:{count}"
+    pipe.execute_command("JSON.SET", course_key, "$", json.dumps(course))
+    if count % 500 == 0:
+      pipe.execute()
+  pipe.execute()
 
-# create index
-r.execute_command("FT.CREATE", "idx:classes", "ON", "JSON", "PREFIX", "1", 
+  # Same courses, in the same order, for browser-side search (/api/search-index)
+  write_search_index(data, "search_index.json")
+
+  client.execute_command("FT.CONFIG", "SET", "MINPREFIX", "1")
+
+  client.execute_command("FT.CREATE", "idx:classes", "ON", "JSON", "PREFIX", "1",
               "classes:", "SCHEMA", 
               "$.fullTitle", "AS", "fullTitle", "TEXT", "WEIGHT", "50", 
               "$.detailId", "AS", "detailId", "TAG", 
@@ -90,3 +96,30 @@ r.execute_command("FT.CREATE", "idx:classes", "ON", "JSON", "PREFIX", "1",
               "$.credits[1]", "as", "creditMax", "NUMERIC", 
               "$.gened[*]", "AS", "gened", "TAG",
               "$.sched[*]", "AS", "sched", "TAG")
+
+  # Kept separate so the lexical schema and queries are unchanged. It starts empty;
+  # embed.py fills it in the background, and hashes are indexed as they're added.
+  client.execute_command(
+    "FT.CREATE", VECTOR_INDEX_NAME,
+    "ON", "HASH",
+    "PREFIX", "1", VECTOR_KEY_PREFIX,
+    "SCHEMA",
+    "subjectCode", "TAG",
+    "terms", "TAG",
+    "gened", "TAG",
+    "sched", "TAG",
+    "courseCode", "NUMERIC",
+    "creditMin", "NUMERIC",
+    "creditMax", "NUMERIC",
+    "popularity", "NUMERIC",
+    "intro", "NUMERIC",
+    VECTOR_FIELD_NAME,
+    "VECTOR", "FLAT", "6",
+    "TYPE", "FLOAT32",
+    "DIM", str(EMBEDDING_DIM),
+    "DISTANCE_METRIC", "COSINE",
+  )
+
+
+if __name__ == "__main__":
+  main()

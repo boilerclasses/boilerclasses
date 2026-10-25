@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, startTransition } from 'react';
+import { useState, useEffect, useCallback, useRef, startTransition } from 'react';
 import { useRouter } from 'next/router';
 import { CURRENT_SEMESTER } from '@/lib/terms';
+import { getBuildId, isLocalSearchReady, searchLocally, startLocalSearch } from '@/lib/localSearch';
+import { semanticQuery } from '@/lib/queryAliases.mjs';
 
 const DEFAULT_FILTERS = {
   subjects: [],
@@ -28,6 +30,19 @@ export { CURRENT_SEMESTER, CURRENT_SEMESTER_CODE } from '@/lib/terms';
 
 // Storage key for filters
 const FILTERS_STORAGE_KEY = "boilerclasses_filters";
+const SEMANTIC_SEARCH_DELAY_MS = 100;
+
+const abortableDelay = (milliseconds, signal) => new Promise((resolve, reject) => {
+  const handleAbort = () => {
+    clearTimeout(timeout);
+    reject(new DOMException('Aborted', 'AbortError'));
+  };
+  const timeout = setTimeout(() => {
+    signal.removeEventListener('abort', handleAbort);
+    resolve();
+  }, milliseconds);
+  signal.addEventListener('abort', handleAbort, { once: true });
+});
 
 export const useSearchFilters = ({ view = 'full' } = {}) => {
   const router = useRouter();
@@ -73,10 +88,16 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [courses, setCourses] = useState([]);
   const [latency, setLatency] = useState(null);
+  // The latency shown is what the user waits: from their keystroke (or filter
+  // change) until the new results are on screen, not just the search itself.
+  const changedAt = useRef(null);
+  const measureFrom = useRef(null);
+  const [semanticSearching, setSemanticSearching] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   // Update specific filter
   const updateFilter = useCallback((filterName, value) => {
+    changedAt.current = performance.now();
     setFilters(prevFilters => {
       if (Object.is(prevFilters[filterName], value)) return prevFilters;
       const newFilters = {
@@ -138,6 +159,9 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
   // Search function
   const search = async (signal) => {
     let { searchTerm, subjects, semesters, genEds, credits, levels, scheduleTypes } = filters;
+    let wordMatches = 0;
+    const searchStartedAt = changedAt.current ?? performance.now();
+    setSemanticSearching(false);
 
     if (searchTerm && searchTerm.length <= 1 && subjects.length === 0 && semesters.length === 0 && genEds.length === 0) {
       setCourses([]);
@@ -145,7 +169,7 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
       return;
     }
 
-    const params = new URLSearchParams({
+    const query = {
       q: transformQuery(searchTerm),
       sub: subjects.map(x => x.value),
       term: semesters.map(x => x.value),
@@ -154,42 +178,128 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
       cmax: credits.max,
       levels,
       sched: scheduleTypes,
-      maxlim: 100,
-      view
-    });
+    };
 
     try {
-      const start = performance.now();
-      const response = await fetch(`/api/search?${params}`, { signal });
-      if (!response.ok) throw new Error(`Search failed: ${response.status}`);
-      const data = await response.json();
+      let documents;
+      if (view === 'card' && isLocalSearchReady()) {
+        documents = await searchLocally({ ...query, limit: 100 });
+        if (!documents) return;
+      } else {
+        const params = new URLSearchParams({ ...query, maxlim: 100, view, v: getBuildId() });
+        const response = await fetch(`/api/search?${params}`, { signal });
+        if (!response.ok) throw new Error(`Search failed: ${response.status}`);
+        documents = (await response.json()).courses.documents;
+      }
       if (signal.aborted) return;
-      const elapsed = Math.round(performance.now() - start);
 
       // Clean up descriptions
-      const processedCourses = data.courses.documents.map(item =>
+      const processedCourses = documents.map(item =>
         item.value.description.startsWith("<a href=")
           ? { ...item, value: { ...item.value, description: "No Description Available" } }
           : item
       );
 
+      const semanticPending = transformQuery(searchTerm).length >= 2;
       startTransition(() => {
-        setLatency(elapsed);
-        setCourses(processedCourses);
+        // With no word matches, semantic results are still on the way; keep the
+        // previous results up until they land instead of flashing an empty page.
+        if (processedCourses.length > 0 || !semanticPending) {
+          measureFrom.current = searchStartedAt;
+          setCourses(processedCourses);
+        }
       });
+      wordMatches = processedCourses.length;
     } catch (error) {
       if (signal.aborted) return;
       console.error('Search failed:', error);
       setCourses([]);
       setLatency(null);
+      return;
+    }
+
+    if (transformQuery(searchTerm).length < 2) return;
+
+    // Expanded abbreviations embed far better: "calc iii" → "calculus iii".
+    const semanticParams = new URLSearchParams({ ...query, q: semanticQuery(query.q), maxlim: 8, v: getBuildId() });
+    setSemanticSearching(true);
+
+    try {
+      // Avoid starting expensive semantic work for every intermediate keystroke.
+      await abortableDelay(SEMANTIC_SEARCH_DELAY_MS, signal);
+      const semanticResponse = await fetch(`/api/search-semantic?${semanticParams}`, { signal });
+      if (!semanticResponse.ok) throw new Error(`Semantic search failed: ${semanticResponse.status}`);
+      const semanticData = await semanticResponse.json();
+      if (signal.aborted) return;
+
+      const semanticCourses = semanticData.courses.documents.map(item => ({
+        ...item,
+        value: {
+          ...item.value,
+          description: item.value.description.startsWith("<a href=")
+            ? "No Description Available"
+            : item.value.description
+        }
+      }));
+
+      // Semantic matches go after courses matching every word but before partial
+      // matches, which are weaker guesses; a partial match they repeat moves up.
+      setCourses(currentCourses => {
+        // The list on screen is the previous search's when nothing matched by word,
+        // so these are the first new results the user sees.
+        if (wordMatches === 0) {
+          measureFrom.current = searchStartedAt;
+          return semanticCourses;
+        }
+        const full = currentCourses.filter(course => !course.partial);
+        const fullIds = new Set(full.map(course => course.value.detailId));
+        const semantic = semanticCourses.filter(course => !fullIds.has(course.value.detailId));
+        const semanticIds = new Set(semantic.map(course => course.value.detailId));
+        const partial = currentCourses.filter(course => course.partial && !semanticIds.has(course.value.detailId));
+        return [...full, ...semantic, ...partial];
+      });
+    } catch (error) {
+      if (!signal.aborted) {
+        console.error('Semantic search failed:', error);
+        // Nothing matched by word either, so drop the previous search's results.
+        if (wordMatches === 0) setCourses([]);
+      }
+    } finally {
+      if (!signal.aborted) {
+        setSemanticSearching(false);
+      }
     }
   };
+
+  // Once new results are committed, wait for the browser to paint them (the next
+  // frame, then a task after it) and show how long the user waited.
+  useEffect(() => {
+    const from = measureFrom.current;
+    if (from === null) return;
+    measureFrom.current = null;
+    // Background tabs don't paint frames; fall back to when the results were committed.
+    const committed = performance.now();
+    let shown = false;
+    const show = at => {
+      if (shown) return;
+      shown = true;
+      setLatency(Math.round(at - from));
+    };
+    requestAnimationFrame(() => setTimeout(() => show(performance.now())));
+    setTimeout(() => show(committed), 200);
+  }, [courses]);
+
+  // Load browser-side search as soon as the page is up; it downloads in the background.
+  useEffect(() => {
+    if (view === 'card') startLocalSearch();
+  }, [view]);
 
   // Search effect
   useEffect(() => {
     if (!initialized) return;
     const controller = new AbortController();
-    const timeout = setTimeout(() => search(controller.signal), 25);
+    // Browser search is cheap and drops stale searches itself; only server requests wait.
+    const timeout = setTimeout(() => search(controller.signal), isLocalSearchReady() ? 0 : 25);
     return () => {
       clearTimeout(timeout);
       controller.abort();
@@ -247,6 +357,7 @@ export const useSearchFilters = ({ view = 'full' } = {}) => {
     setFiltersCollapsed,
     courses,
     latency,
+    semanticSearching,
     transformQuery,
   };
 };

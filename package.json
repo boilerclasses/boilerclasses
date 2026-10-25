@@ -15,8 +15,6 @@
     "@choc-ui/chakra-autocomplete": "^5.2.9",
     "@emotion/react": "^11.11.1",
     "@mtucourses/rate-my-professors": "^2.2.1",
-    "@vercel/analytics": "^1.1.1",
-    "@vercel/og": "^0.6.2",
     "base64-arraybuffer": "^1.0.2",
     "chakra-multiselect": "^0.4.6",
     "chart.js": "^4.4.1",
@@ -24,6 +22,7 @@
     "csv-parser": "^3.2.0",
     "framer-motion": "^12.4.7",
     "jspdf": "^2.5.2",
+    "minisearch": "7.2.0",
     "net": "^1.0.2",
     "next": "^14.2.18",
     "nextjs-cors": "^2.2.0",
@@ -35,6 +34,7 @@
     "react-select": "^5.8.0",
     "recharts": "^2.15.1",
     "redis": "^4.6.11",
+    "stemmer": "2.0.1",
     "tls": "^0.0.1"
   },
   "devDependencies": {

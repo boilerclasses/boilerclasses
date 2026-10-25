@@ -108,6 +108,11 @@ semesters.sort(key=lambda data: term_key(data[0]["term"]))
 all_terms = [data[0]["term"] for data in semesters]
 latest_sem = all_terms[-1]
 
+# (subject, course, term, crn) -> course indexes; CRNs get reused across semesters
+grade_index = {}
+# (subject, course, term) -> courses offered under that number that term
+term_index = {}
+
 # Group once in semester order rather than rescan all records per course.
 # Preserve the existing punctuation-insensitive title identity and sort order.
 grouped = {}
@@ -124,6 +129,9 @@ for class_id in tqdm(sorted(grouped)):
     class_data = {"terms": [], "instructor": {}, "crn": [], "sched": []}
     for class_sem in instances:
         class_data["crn"].extend(class_sem["crn"])
+        term_index.setdefault((s, c, class_sem["term"]), []).append(len(out))
+        for crn in class_sem["crn"]:
+            grade_index.setdefault((s, c, class_sem["term"], crn), []).append(len(out))
         if "Distance Learning" not in class_sem["sched"] or class_sem["term"] == latest_sem:
             class_data["sched"].extend(class_sem["sched"])
         class_data["terms"].append(class_sem["term"])
@@ -161,11 +169,6 @@ for i in range(len(course_data)):
         course_data[i]["gpa"] = {}
 
 # adding grade information
-grade_index = {}
-for i, course in enumerate(course_data):
-    for crn in course["crn"]:
-        grade_index.setdefault((course["subjectCode"], course["courseCode"], crn), []).append(i)
-
 grade_fields = (
     "totalAplus", "totalA", "totalAminus", "totalBplus", "totalB", "totalBminus",
     "totalCplus", "totalC", "totalCminus", "totalDplus", "totalD", "totalDminus", "totalF",
@@ -200,7 +203,15 @@ for file_name in tqdm(sorted(os.listdir(args.gradefolder))):
         # honors rows share CRNs with regular sections, so only attach them to honors courses
         # titles are truncated to 30 chars, so the suffix shows up as -Honors, -Honor, - Honors, -Hnrs, etc.
         isHonors = re.search(r"[-–]\s*(Honors?|Honrs?|Hnrs)\s*$", currTitle, re.I)
-        for i in grade_index.get((currSubjectCode, currCourseCode, int(grade["CRN"])), []):
+        matches = grade_index.get((currSubjectCode, currCourseCode, currSemester, int(grade["CRN"])))
+        if not matches:
+            # older scrapes miss some sections; fall back when only one course had this number that term
+            offered = [
+                i for i in term_index.get((currSubjectCode, currCourseCode, currSemester), [])
+                if bool(isHonors) == bool(re.search(r"\b(Honors?|Honrs?|Hnrs)\b", course_data[i]["title"], re.I))
+            ]
+            matches = offered if len(offered) == 1 else []
+        for i in matches:
             course = course_data[i]
             if isHonors and not re.search(r"\b(Honors?|Honrs?|Hnrs)\b", course["title"], re.I):
                 continue
@@ -215,12 +226,9 @@ for i in range(len(course_data)):
     for semester, data in course_data[i]["gpa"].items():
         for entry in data:
             instructor = entry[0]
-            if instructor.find(",") == -1:
-                formattedInstructor = instructor
-            else:
-                formattedInstructor = (instructor.split(", ")[1] + " " + instructor.split(", ")[0]).strip()
-
-            formattedInstructor = formattedInstructor.split(" ")[0] + " " + formattedInstructor.split(" ")[-1]
+            # "Last Sr, First Middle" -> "First Last Sr", then the same first/last as the instructor lists
+            last, _, first = instructor.partition(", ")
+            formattedInstructor = first_last(f"{first} {last}")
 
             if formattedInstructor in gpa_data:
                 if semester in gpa_data[formattedInstructor]:

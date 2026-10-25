@@ -5,7 +5,10 @@ https://github.com/user-attachments/assets/2f1d7f6c-00fd-4de0-880b-80b4598cb77c
 # Structure
 BoilerClasses is a simple [Next.js](https://nextjs.org/) app with a few Python helper files to format and organize the data. We use a [Redis](https://redis.io/) instance to store and rapidly query all our data. 
 
-We use [Fly.io](https://fly.io/) through [Docker](https://www.docker.com/) to host our app. More steps to run the Docker container through our Dockerfile can be found below. 
+The app runs in a [Docker](https://www.docker.com/) container on a server run by [Boilerexams](https://boilerexams.com), behind [Cloudflare](https://www.cloudflare.com/). Every push to `main` is deployed by the **Deploy** GitHub Action (`.github/workflows/deploy.yml`) on a self-hosted runner on that server. It builds the new image while the old container keeps serving, swaps them, and rolls back if the new one fails its health check. Steps to run the same container locally are below.
+
+# Contributing
+All contributions are very, very welcome! If you find a *bug* or have any *feedback*, open an [issue](https://github.com/boilerclasses/boilerclasses/issues) or a [PR](https://github.com/boilerclasses/boilerclasses/pulls), or use our [feedback form](https://docs.google.com/forms/d/e/1FAIpQLScoE5E-G7dbr7-v9dY5S7UeIoojjMTjP_XstLz38GBpib5MPA/viewform). BoilerClasses is maintained by the [Boilerexams](https://boilerexams.com) team. If you'd like to work on it (and Boilerexams) with us regularly, [apply to join the team](https://boilerexams.com/apply)!
 
 # Setup
 You can clone this repository and run a local instance of the app in two ways (with or without Docker):
@@ -48,13 +51,20 @@ This will expose the container's port `3000` to your machine. Navigate to `local
    npm run dev
    ```
    Now, you can make changes within the Next.js app and have them reflect in real-time at `localhost:3000`.
+7. Semantic search is optional locally. For it, use the `redis/redis-stack-server` image above (it needs RediSearch), then from `server` run `pip3 install -r requirements.txt`, `python3 embed.py`, and `python3 semantic_api.py`.
+
+### Semantic search
+
+Lexical results show first, and semantic matches (`/api/search-semantic`) are appended below them. Each course's code, title, and description are embedded with `BAAI/bge-small-en-v1.5`. A query is embedded the same way, and the closest courses by cosine distance are returned, dropping any past `SEMANTIC_MAX_DISTANCE` in `server/embeddings.py` so nonsense queries can still show no results.
+
+When the container starts, `embed.py` runs in the background while the site serves lexical search. Vectors are cached in SQLite by a hash of the embedded text, so only new or edited courses go through the model; grade, instructor, and term changes cost nothing. In production the cache lives on the `boilerclasses-embeddings` Docker volume, so it survives deploys. The first run embeds every course, and later deploys only embed what changed.
 
    PS: if you look at the Dockerfile, you can see that these exact commands are run!
 
 # Data Collection
 
 Data is refreshed by the **Data Pipeline** GitHub Action (`.github/workflows/data.yml`), weekly on Mondays or by hand from the Actions tab:
-1. `scrape.py` scrapes the newest 2 semesters from Purdue's catalog and uploads them to our [S3 bucket](https://s3.amazonaws.com/boilerclasses). Older semesters stay as they are on S3.
+1. `scrape.py` scrapes the newest 2 semesters from Purdue's catalog and uploads them to our [S3 bucket](https://s3.amazonaws.com/boilerclasses-bucket). Older semesters stay as they are on S3.
 2. `grades.py` converts the newest 5 semesters of grade CSVs from [BoilerGrades](https://github.com/eduxstad/boiler-grades) and uploads any that changed.
 3. `harmonize.py` combines everything on S3 into one JSON file and writes `src/data/terms.json` for the frontend.
 4. If the result changed, it's uploaded as `snapshots/<sha256>.json`, the hash is committed to `data.lock`, and the site is deployed. Only the snapshots from the last 10 `data.lock` commits are kept.
@@ -66,8 +76,5 @@ Manual runs take two optional inputs: `terms` (e.g. `["Fall 2026"]`, or `[]` to 
 
 Running the `scrape.py` script may cause issues, but feel free to tweak line ~42, where the driver is initialized. It is somewhat system-dependent -- that configuration should work on MacOS with a Google Chrome driver and `selenium v4.x`. If you want more clarification/help, open up an [issue](https://github.com/boilerclasses/boilerclasses/issues)!
 
-# Future Improvements
-We're trying to integrate as many features as possible, and we'll have open issues for the same. If you find a *bug* or have any *feedback*, let us through a [PR](https://github.com/boilerclasses/boilerclasses/pulls) or our [feedback form](https://docs.google.com/forms/d/e/1FAIpQLScoE5E-G7dbr7-v9dY5S7UeIoojjMTjP_XstLz38GBpib5MPA/viewform). All contributions are very, very welcome!
-
 # Acknowledgements
-Inspired by [classes.wtf](https://classes.wtf) and Purdue's slow course catalogs. We'd like to also thank our friends over at [Boilerexams](https://boilerexams.com), [Purdue.io](https://purdue.io/), and [BoilerGrades](https://boilergrades.com/).
+Inspired by [classes.wtf](https://classes.wtf) and Purdue's slow course catalogs, BoilerClasses was created by [@knightron0](https://github.com/knightron0), [@unkn-wn](https://github.com/unkn-wn) and [@SohamJog](https://github.com/SohamJog). We'd also like to thank our friends over at [Purdue.io](https://purdue.io/) and [BoilerGrades](https://boilergrades.com/).

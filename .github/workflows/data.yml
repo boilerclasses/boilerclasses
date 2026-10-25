@@ -23,7 +23,7 @@ permissions:
 concurrency: data-pipeline
 
 env:
-  BUCKET: boilerclasses
+  BUCKET: boilerclasses-bucket
   AWS_REGION: us-east-2
 
 jobs:
@@ -190,13 +190,6 @@ jobs:
           git commit -m "data: snapshot ${SHA:0:12}"
           git pull --rebase
           git push
-      # pushes made with GITHUB_TOKEN don't trigger fly.yml, so deploy here
-      - if: steps.snapshot.outputs.changed == 'true' || steps.sections.outputs.changed == 'true'
-        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, Node 24 runtime
-      - if: steps.snapshot.outputs.changed == 'true' || steps.sections.outputs.changed == 'true'
-        run: flyctl deploy --remote-only
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       # keep the snapshots the last 10 data.lock / sections.lock commits point to (rollback window), delete the rest
       - name: Clean up old snapshots
         run: |

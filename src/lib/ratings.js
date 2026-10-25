@@ -1,5 +1,5 @@
 // Keep the wrapper's existing queries and response shapes, but avoid its old
-// node-fetch gzip reader, which fails with ERR_STREAM_PREMATURE_CLOSE on Fly.
+// node-fetch gzip reader, which failed in production with ERR_STREAM_PREMATURE_CLOSE.
 import {
   searchTeacherQuery,
   getTeacherQuery,

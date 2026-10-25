@@ -1,7 +1,9 @@
 node_modules
+.git
 .gitignore
 .next
-.git
 server/data
 server/classes_out.json
 server/sections_out.json
+server/embedding_cache
+*.log

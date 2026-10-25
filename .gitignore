@@ -31,9 +31,6 @@ yarn-error.log*
 .env*.local
 .env
 
-# vercel
-.vercel
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -44,3 +41,5 @@ server/.env
 .claude/
 
 server/**/*.json
+
+server/embedding_cache/

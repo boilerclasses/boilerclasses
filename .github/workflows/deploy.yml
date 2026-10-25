@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  # pushes made with GITHUB_TOKEN (the data pipeline's snapshot commits) don't trigger push
+  workflow_run:
+    workflows: ["Data Pipeline"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Rebuild even if this commit is already running'
+        type: boolean
+        default: false
+
+# one deploy at a time; a newer one waits instead of cancelling a swap halfway through
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy app
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 30
+    # the self-hosted runner on the BoilerClasses VM
+    runs-on: [self-hosted, boilerclasses]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Build and swap
+        env:
+          FORCE: ${{ inputs.force }}
+        run: deploy/deploy.sh

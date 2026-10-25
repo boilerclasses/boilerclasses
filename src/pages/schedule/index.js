@@ -11,6 +11,7 @@ import { IoMdOpen, IoMdTrash, IoIosClose, IoIosWarning, IoMdAdd } from "react-ic
 // Group internal imports
 import { useSearchFilters } from '@/hooks/useSearchFilters';
 import { SCHEDULE_SEMESTERS, semesterStorageKey, migrateScheduleStorage } from '@/lib/terms';
+import { getBuildId } from '@/lib/localSearch';
 import { genedsOptions, labels, sanitizeDescription } from '@/lib/utils';
 import CourseSearch from '@/components/schedule/courseSearch';
 import ScheduleCalendar from '@/components/schedule/schedule';
@@ -26,7 +27,7 @@ const hasFullCourseData = course => course?.gpa != null && Array.isArray(course.
 
 const restoreFullCourse = async (course, signal) => {
   if (hasFullCourseData(course)) return course;
-  const params = new URLSearchParams({ detailId: course.detailId });
+  const params = new URLSearchParams({ detailId: course.detailId, v: getBuildId() });
   const response = await fetch(`/api/get?${params}`, { signal });
   if (!response.ok) throw new Error('Could not restore schedule course');
   const data = await response.json();
@@ -38,7 +39,7 @@ const restoreFullCourse = async (course, signal) => {
 const SEMESTER_STORAGE_KEY = 'scheduleSemester';
 
 const Schedule = () => {
-  const searchFilters = useSearchFilters();
+  const searchFilters = useSearchFilters({ view: 'card' });
 
   // null until mounted: the page is prerendered without localStorage, so the saved term
   // (and every per-term planner initializer) is only read on the client
@@ -219,12 +220,14 @@ const SchedulePlanner = ({ semester, setSemester, updateFilter, courses, filters
     highlightCourseDiv();
   }, [graphData]);
 
-  // handles when a user selects a course from the search dropdown
+  // handles when a user selects a course from the search dropdown; results are
+  // card summaries, so this fetches the full course (grades, gened)
   const handleOnSelect = (course) => {
     if (!course) return;
     updateFilter('searchTerm', '');
-    setSelectedCourse(course.value);
-    localStorage.setItem(selectedKey, JSON.stringify(course.value));
+    restoreFullCourse(course.value)
+      .then(setSelectedCourse)
+      .catch(console.error);
   };
 
   // removes a course from the pinned courses list and clears selection if it was selected

@@ -5,3 +5,5 @@ redis
 flask
 flask-cors
 requests
+fastembed==0.7.3
+waitress==3.0.2
