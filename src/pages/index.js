@@ -289,7 +289,7 @@ const CourseCatalog = () => {
               className="placeholder:text-tertiary text-primary text-xl bg-super w-full pb-2 border-b-2 border-[rgb(var(--background-opposite))] focus:outline-none focus:border-blue-500 transition duration-300"
             />
             <Button
-              onClick={() => router.push("https://schedule.boilerclasses.com")}
+              onClick={() => router.push("/schedule")}
               className="flex justify-self-center mt-4 md:mt-6 bg-background text-primary hover:bg-background-secondary w-fit p-4 shadow"
               variant=""
               size={{ base: "xs", sm: "sm", md: "md" }}

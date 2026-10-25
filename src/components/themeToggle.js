@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { MoonIcon, SunIcon } from '@chakra-ui/icons';
+import { readTheme, saveTheme } from '@/lib/theme';
 
 const ThemeToggle = () => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
-      const storedTheme = localStorage.getItem('theme');
+      const storedTheme = readTheme();
       if (storedTheme) {
         return storedTheme === 'dark';
       }
@@ -14,13 +15,19 @@ const ThemeToggle = () => {
     return true;
   });
 
+  // copy a preference saved before the shared cookie existed into it
+  useEffect(() => {
+    const storedTheme = readTheme();
+    if (storedTheme) saveTheme(storedTheme);
+  }, []);
+
   useEffect(() => {
     const root = window.document.documentElement;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
-    // handle system theme changes if no localstorage preference
+    // handle system theme changes if no saved preference
     const handleSystemThemeChange = (e) => {
-      if (!localStorage.getItem('theme')) {
+      if (!readTheme()) {
         setIsDarkMode(e.matches);
       }
     };
@@ -49,7 +56,7 @@ const ThemeToggle = () => {
   const toggleTheme = () => {
     const newTheme = !isDarkMode;
     setIsDarkMode(newTheme);
-    localStorage.setItem('theme', newTheme ? 'dark' : 'light');
+    saveTheme(newTheme ? 'dark' : 'light');
   };
 
   return (
