@@ -457,7 +457,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
               )}
             </section>
           )}
-          <div className='hidden md:block mt-auto'><Footer /></div>
+          <div className='hidden md:block mt-auto'><Footer compact /></div>
         </aside>
 
         {/* calendar */}
