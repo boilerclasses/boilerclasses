@@ -24,9 +24,9 @@ async function connect() {
   }
 }
 
-function filterQuery(sub, term, gen, cmin, cmax, levels, sched) {
+function filterQuery(sub, term, gen, cmin, cmax, levels, sched, gpa) {
   const formattedLevels = levels.map(level => `@courseCode:[${parseInt(level)*100}, ${parseInt(level)*100 + 9999}]`)
-  return `${sub[0].length > 0 ? ` @subjectCode:{${sub.join("|")}}` : ""}${term[0].length > 0 ? ` @terms:{${term.join("|")}}` : ""}${gen[0].length > 0 ? gen.map((g) => ` @gened:{${g}}`) : ""} (@creditMin:[${cmin}, ${cmax}] | @creditMax:[${cmin}, ${cmax}])${levels[0].length > 0 ? ` (${formattedLevels.join(" | ")})` : " @courseCode:[0, 0]"}${sched[0].length > 0 ? ` @sched:{${sched.join("|")}}` : " @sched:{}"}`;
+  return `${sub[0].length > 0 ? ` @subjectCode:{${sub.join("|")}}` : ""}${term[0].length > 0 ? ` @terms:{${term.join("|")}}` : ""}${gen[0].length > 0 ? gen.map((g) => ` @gened:{${g}}`) : ""} (@creditMin:[${cmin}, ${cmax}] | @creditMax:[${cmin}, ${cmax}])${levels[0].length > 0 ? ` (${formattedLevels.join(" | ")})` : " @courseCode:[0, 0]"}${sched[0].length > 0 ? ` @sched:{${sched.join("|")}}` : " @sched:{}"}${gpa ? ` @averageGpa:[${Number(gpa[0])}, ${Number(gpa[1])}]` : ""}`;
 }
 
 async function run(text, size) {
@@ -38,17 +38,17 @@ async function run(text, size) {
   }
 }
 
-export async function searchCourses(q, sub, term, gen, cmin, cmax, levels, sched, size) {
-  return run(`${buildSearchText(q)}${filterQuery(sub, term, gen, cmin, cmax, levels, sched)}`, size);
+export async function searchCourses(q, sub, term, gen, cmin, cmax, levels, sched, gpa, size) {
+  return run(`${buildSearchText(q)}${filterQuery(sub, term, gen, cmin, cmax, levels, sched, gpa)}`, size);
 }
 
 // Courses by code ("MA 26100"), with the same filters; used for pinned nicknames.
-export async function searchCodes(codes, sub, term, gen, cmin, cmax, levels, sched, size) {
+export async function searchCodes(codes, sub, term, gen, cmin, cmax, levels, sched, gpa, size) {
   const byCode = codes.map(code => {
     const [subject, number] = code.split(' ');
     return `(@subjectCode:{${subject}} @courseCode:[${number}, ${number}])`;
   });
-  return run(`(${byCode.join(' | ')})${filterQuery(sub, term, gen, cmin, cmax, levels, sched)}`, size);
+  return run(`(${byCode.join(' | ')})${filterQuery(sub, term, gen, cmin, cmax, levels, sched, gpa)}`, size);
 }
 
 

@@ -82,7 +82,7 @@ export function buildIndex(courses) {
 
 export const loadIndex = json => MiniSearch.loadJSON(json, INDEX_OPTIONS);
 
-function matchesFilters(course, { sub, term, gen, cmin, cmax, levels, sched }) {
+function matchesFilters(course, { sub, term, gen, cmin, cmax, levels, sched, gmin, gmax }) {
   const value = course.value;
   if (sub.length && !sub.includes(value.subjectCode)) return false;
   if (term.length && !term.some(t => course.termSet.has(t))) return false;
@@ -91,6 +91,11 @@ function matchesFilters(course, { sub, term, gen, cmin, cmax, levels, sched }) {
   if (!((min >= cmin && min <= cmax) || (max >= cmin && max <= cmax))) return false;
   if (!levels.some(level => value.courseCode >= level * 100 && value.courseCode <= level * 100 + 9999)) return false;
   if (!sched.some(type => course.schedSet.has(type))) return false;
+  if (gmin !== undefined) {
+    // Courses without grades have a GPA of 0, so a GPA filter leaves them out
+    const gpa = Number(value.overallGpa?.gpa);
+    if (!gpa || gpa < gmin || gpa > gmax) return false;
+  }
   return true;
 }
 
@@ -101,6 +106,7 @@ export function searchCourses(courses, index, params) {
     cmin: Number(params.cmin),
     cmax: Number(params.cmax),
     levels: params.levels.map(Number),
+    ...(params.gmin !== undefined && { gmin: Number(params.gmin), gmax: Number(params.gmax) }),
   };
   const limit = Number(params.limit) || 100;
   const toDocument = course => ({ id: course.id, value: course.value });

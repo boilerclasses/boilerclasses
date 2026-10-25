@@ -39,10 +39,11 @@ const CourseCatalog = () => {
     semesters: filters.semesters,
     genEds: filters.genEds,
     credits: filters.credits,
+    gpa: filters.gpa,
     levels: filters.levels,
     scheduleTypes: filters.scheduleTypes,
   }), [filters.subjects, filters.semesters, filters.genEds,
-    filters.credits, filters.levels, filters.scheduleTypes]);
+    filters.credits, filters.gpa, filters.levels, filters.scheduleTypes]);
 
   // Gets all the filters as a string for displaying to users
   const getAllFiltersString = () => {
@@ -66,6 +67,8 @@ const CourseCatalog = () => {
         : "";
     const creditsString =
       filters.credits.min !== 0 || filters.credits.max !== 18 ? "credits" : "";
+    const gpaString =
+      filters.gpa.min !== 0 || filters.gpa.max !== 4 ? "GPA" : "";
     const levelsString = filters.levels.length !== 9 ? "levels" : "";
     const schedsString =
       filters.scheduleTypes.length !== 12 ? "type of course" : "";
@@ -75,6 +78,7 @@ const CourseCatalog = () => {
       selectedSemestersString,
       selectedGenEdsString,
       creditsString,
+      gpaString,
       levelsString,
       schedsString,
     ]

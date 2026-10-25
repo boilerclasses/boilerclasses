@@ -24,6 +24,7 @@ from embeddings import (
   embed_texts,
   open_cache,
 )
+from push import gpa_value, overall_gpa
 
 BATCH_SIZE = 256
 
@@ -91,22 +92,24 @@ def main():
   client = redis.Redis(host="localhost", port=6379)
   pipe = client.pipeline(transaction=False)
   for count, (course, h) in enumerate(zip(courses, hashes), start=1):
-    pipe.hset(
-      f"{VECTOR_KEY_PREFIX}{count}",
-      mapping={
-        "courseKey": f"classes:{count}",
-        "subjectCode": course["subjectCode"],
-        "terms": tag_values(course["terms"]),
-        "gened": tag_values(course["gened"]),
-        "sched": tag_values(course["sched"]),
-        "courseCode": course["courseCode"],
-        "creditMin": course["credits"][0],
-        "creditMax": course["credits"][1],
-        "popularity": math.log1p(semesters[count - 1]) / most,
-        "intro": int(course["courseCode"] < 30000),
-        VECTOR_FIELD_NAME: vectors[h],
-      },
-    )
+    mapping = {
+      "courseKey": f"classes:{count}",
+      "subjectCode": course["subjectCode"],
+      "terms": tag_values(course["terms"]),
+      "gened": tag_values(course["gened"]),
+      "sched": tag_values(course["sched"]),
+      "courseCode": course["courseCode"],
+      "creditMin": course["credits"][0],
+      "creditMax": course["credits"][1],
+      "popularity": math.log1p(semesters[count - 1]) / most,
+      "intro": int(course["courseCode"] < 30000),
+      VECTOR_FIELD_NAME: vectors[h],
+    }
+    # Courses without grades have no GPA, so a GPA filter leaves them out
+    gpa = gpa_value(overall_gpa(course))
+    if gpa is not None:
+      mapping["averageGpa"] = gpa
+    pipe.hset(f"{VECTOR_KEY_PREFIX}{count}", mapping=mapping)
     if count % 500 == 0:
       pipe.execute()
   pipe.execute()

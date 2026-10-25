@@ -77,7 +77,7 @@ def request_filters():
             levels.append(int(level))
         except ValueError:
             continue
-    return {
+    filters = {
         "subjects": csv_values("sub"),
         "terms": csv_values("term"),
         "geneds": csv_values("gen"),
@@ -86,6 +86,11 @@ def request_filters():
         "credit_min": float_arg("cmin", 0),
         "credit_max": float_arg("cmax", 18),
     }
+    # Only sent while the GPA filter is narrowed
+    if "gmin" in request.args or "gmax" in request.args:
+        filters["gpa_min"] = float_arg("gmin", 0)
+        filters["gpa_max"] = float_arg("gmax", 4)
+    return filters
 
 
 @app.get("/health")

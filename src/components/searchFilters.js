@@ -125,6 +125,49 @@ const SearchFilters = ({ filters, updateFilter, filtersCollapsed, setFiltersColl
               </PopoverContent>
             </Popover>
 
+            {/* GPA Filter */}
+            <Popover placement='bottom-start'>
+              <PopoverTrigger>
+                <button className='flex flex-row gap-4 px-4 py-1.5 bg-background items-center border text-primary rounded-xl border-[rgb(var(--background-color))] hover:border-[rgb(var(--background-tertiary-color))] shadow'>
+                  <span>GPA</span>
+                  <ChevronDownIcon color='gray-800' />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent backgroundColor={`rgb(var(--background-color))`} borderColor='gray.800' className='bg-background border-[rgb(var(--background-secondary-color))] shadow-lg'>
+                <PopoverBody paddingLeft={8} paddingRight={8} paddingTop={4} paddingBottom={4}>
+                  <RangeSlider
+                    aria-label={['min', 'max']}
+                    min={0}
+                    max={4}
+                    step={0.1}
+                    defaultValue={[filters.gpa.min, filters.gpa.max]}
+                    onChange={(val) => updateFilter('gpa', {
+                      min: Math.round(val[0] * 10) / 10,
+                      max: Math.round(val[1] * 10) / 10
+                    })}
+                  >
+                    <RangeSliderTrack>
+                      <RangeSliderFilledTrack />
+                    </RangeSliderTrack>
+                    <RangeSliderThumb boxSize={4} index={0}>
+                      <Box bg={`rgb(var(--text-secondary-color))`} width="100%" height="100%" borderRadius="50%" />
+                    </RangeSliderThumb>
+                    <RangeSliderThumb boxSize={4} index={1}>
+                      <Box bg={`rgb(var(--text-secondary-color))`} width="100%" height="100%" borderRadius="50%" />
+                    </RangeSliderThumb>
+                  </RangeSlider>
+                  <div className='text-primary'>
+                    {filters.gpa.min.toFixed(1)} - {filters.gpa.max.toFixed(1)} GPA
+                  </div>
+                  {(filters.gpa.min > 0 || filters.gpa.max < 4) && (
+                    <div className='text-secondary text-sm'>
+                      Courses without grade data are hidden
+                    </div>
+                  )}
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+
             {/* Levels Filter */}
             <Popover placement='bottom-start'>
               <PopoverTrigger>
