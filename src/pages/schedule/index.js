@@ -1,40 +1,35 @@
 // boilerclasses.com/schedule (schedule.boilerclasses.com redirects here)
 
-// Group external imports
 import Head from 'next/head';
 import Link from 'next/link';
 import { Inter } from 'next/font/google';
-import { useState, useEffect, useMemo } from 'react';
-import { Spinner, Tooltip } from '@chakra-ui/react'
-import { IoMdOpen, IoMdTrash, IoIosClose, IoIosWarning, IoMdAdd } from "react-icons/io";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay,
+  useBreakpointValue, useToast,
+} from '@chakra-ui/react';
 
-// Group internal imports
 import { useSearchFilters } from '@/hooks/useSearchFilters';
-import { SCHEDULE_SEMESTERS, semesterStorageKey, migrateScheduleStorage } from '@/lib/terms';
-import { getBuildId } from '@/lib/localSearch';
-import { genedsOptions, labels, sanitizeDescription } from '@/lib/utils';
+import { useSchedule, restoreFullCourse } from '@/hooks/useSchedule';
+import { SCHEDULE_SEMESTERS, migrateScheduleStorage, semesterStorageKey } from '@/lib/terms';
+import { decodeSchedule, encodeSchedule } from '@/lib/scheduleShare';
+import { convertTo12HourFormat } from '@/lib/timeUtils';
+import { EXAM_LABELS } from '@/lib/termData';
+import {
+  WEEK, WEEKDAYS, candidates, choose, clashes, courseName, courseTypes, eventColor, formatRange,
+  isTimed, missingTypes, shortType, toClock, toMinutes,
+} from '@/lib/schedule';
 import CourseSearch from '@/components/schedule/courseSearch';
-import ScheduleCalendar from '@/components/schedule/schedule';
-import Graph from '@/components/graph';
-import { collectAllProfessors, calculateGradesAndGPA, averageAllData } from '@/lib/gpaUtils';
-import { ScheduleGpaModal } from '@/components/detail/gpaModal';
-import Prereqs from '@/components/prereqs';
+import WeekCalendar from '@/components/schedule/WeekCalendar';
+import CourseList from '@/components/schedule/CourseList';
+import SectionPicker from '@/components/schedule/SectionPicker';
+import BlockEditor from '@/components/schedule/BlockEditor';
+import FloatingCard from '@/components/schedule/FloatingCard';
+import CourseDetailsDrawer from '@/components/schedule/CourseDetailsDrawer';
+import ExportMenu from '@/components/schedule/ExportMenu';
 import Footer from '@/components/footer';
 
 const inter = Inter({ subsets: ['latin'] });
-
-const hasFullCourseData = course => course?.gpa != null && Array.isArray(course.gened);
-
-const restoreFullCourse = async (course, signal) => {
-  if (hasFullCourseData(course)) return course;
-  const params = new URLSearchParams({ detailId: course.detailId, v: getBuildId() });
-  const response = await fetch(`/api/get?${params}`, { signal });
-  if (!response.ok) throw new Error('Could not restore schedule course');
-  const data = await response.json();
-  const full = data.course.documents[0]?.value;
-  if (!hasFullCourseData(full)) throw new Error('Full schedule course not found');
-  return { ...course, ...full };
-};
 
 const SEMESTER_STORAGE_KEY = 'scheduleSemester';
 
@@ -44,8 +39,33 @@ const Schedule = () => {
   // null until mounted: the page is prerendered without localStorage, so the saved term
   // (and every per-term planner initializer) is only read on the client
   const [semester, setSemester] = useState(null);
+  // a schedule opened from a share link (?s=...), shown read-only until copied or dismissed
+  const [shared, setShared] = useState(null);
+  // a course to add once the planner has switched to the term it runs in
+  const [pendingCourse, setPendingCourse] = useState(null);
 
   useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('s');
+    if (code && decodeSchedule(code)) {
+      // the link holds CRNs; the server looks up which courses they belong to
+      fetch(`/api/shared-plan?s=${encodeURIComponent(code)}`)
+        .then(response => (response.ok ? response.json() : null))
+        .catch(() => null)
+        .then(plan => {
+          const sharedTerm = plan && SCHEDULE_SEMESTERS.find(option => option.code === plan.term);
+          if (sharedTerm) {
+            setShared(plan);
+            setSemester(sharedTerm);
+          } else {
+            openSaved();
+          }
+        });
+      return;
+    }
+    openSaved();
+  }, []);
+
+  const openSaved = () => {
     const newest = SCHEDULE_SEMESTERS[SCHEDULE_SEMESTERS.length - 1];
     let saved = null;
     try {
@@ -56,23 +76,47 @@ const Schedule = () => {
     }
     // defaults to the newest term, which is what most people are planning for
     setSemester(SCHEDULE_SEMESTERS.find(option => option.code === saved) ?? newest);
-  }, []);
+  };
 
   useEffect(() => {
-    if (!semester) return;
+    if (!semester || shared) return;
     try {
       localStorage.setItem(SEMESTER_STORAGE_KEY, semester.code);
     } catch (error) {
       console.error('Error saving schedule semester:', error);
     }
-  }, [semester]);
+  }, [semester, shared]);
+
+  // leave a shared schedule for your own plan, optionally saving the shared one as it
+  const leaveShared = (copyIt) => {
+    if (copyIt) {
+      const key = (name) => semesterStorageKey(name, shared.term);
+      const existing = JSON.parse(localStorage.getItem(key('pinnedCourses')) || '[]');
+      if (existing.length && !window.confirm(`Replace your ${semester.name} plan (${existing.length} course${existing.length === 1 ? '' : 's'}) with this one?`)) return;
+      localStorage.setItem(key('pinnedCourses'), JSON.stringify(shared.courses.map(({ detailId, colorIndex, name }) => ({ detailId, colorIndex, name }))));
+      localStorage.setItem(key('sectionPicks'), JSON.stringify(Object.fromEntries(shared.courses.map(c => [c.detailId, c.crns]))));
+      localStorage.setItem(key('scheduleBlocks'), JSON.stringify(shared.blocks.map(({ id, ...block }) => ({ ...block, id: Math.random().toString(36).slice(2, 10) }))));
+      localStorage.setItem(SEMESTER_STORAGE_KEY, shared.term);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('s');
+    window.history.replaceState(null, '', url);
+    setShared(null);
+    if (!copyIt) {
+      const saved = localStorage.getItem(SEMESTER_STORAGE_KEY);
+      setSemester(SCHEDULE_SEMESTERS.find(option => option.code === saved) ?? semester);
+    }
+  };
+
+  const description = 'BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more.';
+  const image = 'https://opengraph.b-cdn.net/production/images/0413e8c7-edd6-4344-bc7a-8fc27d840783.png?token=XWki0pXYsNvGaeuQwxsWOq1GkgkT-SJQTrP2LtDWKyE&height=776&width=1200&expires=33268877667';
 
   return (
     <>
       <Head>
         <title>Schedule Assistant | BoilerClasses</title>
         <meta name="title" content="Schedule Assistant | BoilerClasses" />
-        <meta name="description" content="BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more." />
+        <meta name="description" content={description} />
         <meta name="keywords" content="Purdue, Purdue Univesity, Purdue Courses, BoilerClasses, Boiler Classes, Boiler, Classes, Courses, Schedule, Scheduling, Assistant, BoilerCourses, Boiler Class, Catalog, Catalogue, Purdue Course Search, Purdue Course Catalog, Boilermakers" />
         <meta name='og:locality' content='West Lafayette' />
         <meta name='og:region' content='IN' />
@@ -82,409 +126,618 @@ const Schedule = () => {
         <meta property="og:url" content="https://boilerclasses.com/schedule" />
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Schedule Assistant | BoilerClasses" />
-        <meta property="og:description" content="BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more." />
-        <meta property="og:image" content="https://opengraph.b-cdn.net/production/images/0413e8c7-edd6-4344-bc7a-8fc27d840783.png?token=XWki0pXYsNvGaeuQwxsWOq1GkgkT-SJQTrP2LtDWKyE&height=776&width=1200&expires=33268877667" />
+        <meta property="og:description" content={description} />
+        <meta property="og:image" content={image} />
 
         <meta name="twitter:card" content="summary_large_image" />
         <meta property="twitter:domain" content="boilerclasses.com" />
         <meta property="twitter:url" content="https://boilerclasses.com/schedule" />
         <meta name="twitter:title" content="Schedule Assistant | BoilerClasses" />
-        <meta name="twitter:description" content="BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more." />
-        <meta name="twitter:image" content="https://opengraph.b-cdn.net/production/images/0413e8c7-edd6-4344-bc7a-8fc27d840783.png?token=XWki0pXYsNvGaeuQwxsWOq1GkgkT-SJQTrP2LtDWKyE&height=776&width=1200&expires=33268877667" />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content={image} />
 
         <link rel="canonical" href="https://boilerclasses.com/schedule" />
       </Head>
 
-      {/* Logo */}
-      <div className='flex flex-row mt-4 mb-2 justify-center'>
-        <Link className="flex flex-row" href='https://boilerclasses.com'>
-          <img
-            src='/boilerclasses-FULL.png'
-            className='my-auto w-8 h-8'
-            alt="BoilerClasses Logo"
+      <div className={`min-h-screen md:min-h-0 bg-super text-primary ${inter.className}`}>
+        {/* remount per term so every piece of schedule state reloads from that term's storage */}
+        {semester && (
+          <SchedulePlanner
+            key={`${semester.code}-${shared ? 'shared' : 'mine'}`}
+            semester={semester}
+            setSemester={(option) => { setShared(null); setSemester(option); }}
+            shared={shared}
+            onLeaveShared={leaveShared}
+            pendingCourse={pendingCourse}
+            onPlanInTerm={(option, course) => {
+              setPendingCourse(course);
+              setShared(null);
+              setSemester(option);
+            }}
+            onPendingAdded={() => setPendingCourse(null)}
+            {...searchFilters}
           />
-          <h1 className='text-md md:text-lg font-semibold my-auto ml-2 select-none text-primary'>
-            BoilerClasses
-          </h1>
-        </Link>
+        )}
       </div>
-
-      {/* mobile message */}
-      <div id="mobile_msg" className='m-2 text-center text-sm text-white items-center justify-center font-light lg:hidden bg-yellow-900 px-2 py-1 flex flex-row'>
-        <div className='cursor-pointer' onClick={() => document.getElementById('mobile_msg').classList.add('hidden')}><IoIosClose size={24} /></div>
-        Use the Scheduling Assistant on Desktop for the best experience!
-      </div>
-
-      {/* remount per term so every piece of schedule state reloads from that term's storage */}
-      {semester && (
-        <SchedulePlanner
-          key={semester.code}
-          semester={semester}
-          setSemester={setSemester}
-          {...searchFilters}
-        />
-      )}
-      <Footer />
     </>
   );
 };
 
-const SchedulePlanner = ({ semester, setSemester, updateFilter, courses, filters }) => {
-  const pinnedKey = semesterStorageKey('pinnedCourses', semester.code);
-  const selectedKey = semesterStorageKey('selectedCourse', semester.code);
+const shortDate = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-  const [selectedCourse, setSelectedCourse] = useState(null);
-  const [gpaGraph, setGpaGraph] = useState({
-    labels,
-    datasets: []
-  });
+const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pendingCourse, onPlanInTerm, onPendingAdded, updateFilter, courses: searchResults, filters }) => {
+  const toast = useToast();
+  const schedule = useSchedule(semester, { shared });
+  const { courses, options, picks, blocks, meetings, exams, dates, activeId, setActiveId, readOnly } = schedule;
 
-  const [pinCourses, setPinCourses] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(pinnedKey);
-      return saved ? JSON.parse(saved).filter(hasFullCourseData) : [];
-    }
-    return [];
-  });
+  const [activeType, setActiveType] = useState(null);
 
-  const [isLoading, setIsLoading] = useState(false);
-
-  // loads the previously selected course from localStorage when the page loads
+  // arriving from "Plan it for <term>": add the course this planner was opened for
   useEffect(() => {
-    const controller = new AbortController();
-    const savedCourse = localStorage.getItem(selectedKey);
-    const savedPins = JSON.parse(localStorage.getItem(pinnedKey) || '[]');
-    if (savedCourse) {
-      restoreFullCourse(JSON.parse(savedCourse), controller.signal)
-        .then(course => { if (!controller.signal.aborted) setSelectedCourse(course); })
-        .catch(error => { if (!controller.signal.aborted) console.error(error); });
+    if (!pendingCourse) return;
+    schedule.addCourse(pendingCourse).catch(console.error);
+    onPendingAdded();
+  }, []);
+  const [hoveredCrns, setHoveredCrns] = useState(null);
+  const [editing, setEditing] = useState(null);      // {id, anchor, isNew, title} of the block being edited
+  const [ghostMenu, setGhostMenu] = useState(null);  // {ghost, anchor} for stacked sections
+  const [details, setDetails] = useState(null);      // course shown in the drawer
+  const [confirmRemove, setConfirmRemove] = useState(null); // detailId of a course to remove
+  const cancelRemoveRef = useRef(null);
+  const isMobile = useBreakpointValue({ base: true, md: false }, { ssr: false });
+  const [mobileDay, setMobileDay] = useState(() => WEEKDAYS[(new Date().getDay() + 6) % 7] ?? 'Mon');
+  const [capturing, setCapturing] = useState(false);
+  const calendarRef = useRef(null);
+  const [isMac, setIsMac] = useState(false); // for shortcut names in the tip, set after hydrating
+  useEffect(() => setIsMac(/Mac|iPhone|iPad/.test(navigator.platform)), []);
+
+  const activeCourse = courses.find(c => c.detailId === activeId) ?? null;
+  const activeOptions = activeCourse && Array.isArray(options[activeId]) ? options[activeId] : [];
+  const activePicked = picks[activeId] ?? [];
+
+  // opening a course starts on the first type it still needs (else its first type)
+  useEffect(() => {
+    if (!activeCourse || !activeOptions.length) return setActiveType(null);
+    setActiveType(missingTypes(activePicked, activeOptions)[0] ?? courseTypes(activeOptions)[0]);
+  }, [activeId, activeOptions.length]);
+
+  const timedMeetings = useMemo(() => meetings.filter(m => m.timed), [meetings]);
+  const unscheduled = meetings.filter(m => !m.timed);
+
+  // what a section would clash with if picked: other courses' meetings, the course's own
+  // sections it would keep, and personal blocks
+  const conflictFor = useCallback((option) => {
+    const courseOptions = Array.isArray(options[activeId]) ? options[activeId] : [];
+    const kept = choose(picks[activeId] ?? [], courseOptions, option.crn).filter(crn => crn !== option.crn);
+    const others = timedMeetings.filter(m => m.detailId !== activeId || kept.includes(m.crn));
+    for (const meeting of option.meetings.filter(isTimed)) {
+      const hit = others.find(other => clashes(meeting, other));
+      if (hit) return courseName(hit.course);
+      const block = blocks.find(b => clashes(meeting, b));
+      if (block) return block.title || 'a block';
     }
-    savedPins.filter(course => !hasFullCourseData(course)).forEach(course => {
-      restoreFullCourse(course, controller.signal)
-        .then(full => {
-          if (controller.signal.aborted) return;
-          setPinCourses(previous => previous.some(item => item.detailId === full.detailId)
-            ? previous : [...previous, full]);
-        })
-        .catch(error => { if (!controller.signal.aborted) console.error(error); });
+    return null;
+  }, [options, activeId, picks, timedMeetings, blocks]);
+
+  // the days each chosen meeting or block overlaps something else: {id: [days]}
+  const conflicting = useMemo(() => {
+    const days = {};
+    const mark = (x, y) => x.days.filter(day => y.days.includes(day)).forEach(day => {
+      (days[x.id] ??= new Set()).add(day);
+      (days[y.id] ??= new Set()).add(day);
     });
-    return () => controller.abort();
+    timedMeetings.forEach((a, i) => {
+      timedMeetings.slice(i + 1).forEach(b => { if (a.crn !== b.crn && clashes(a, b)) mark(a, b); });
+      blocks.forEach(block => { if (clashes(a, block)) mark(a, block); });
+    });
+    blocks.forEach((a, i) => blocks.slice(i + 1).forEach(b => { if (clashes(a, b)) mark(a, b); }));
+    return Object.fromEntries(Object.entries(days).map(([id, set]) => [id, [...set]]));
+  }, [timedMeetings, blocks]);
+
+  const calendarMeetings = timedMeetings.map(m => ({
+    ...m,
+    label: courseName(m.course),
+    subtitle: `${shortType(m.type)} · ${formatRange(m.start, m.end)}`,
+    detail: m.room,
+    tooltip: `${courseName(m.course)} ${m.type}\n${formatRange(m.start, m.end)} · ${m.room}${m.instructors.length ? `\n${m.instructors.join(', ')}` : ''}`,
+    conflictDays: conflicting[m.id] ?? [],
+  }));
+  const calendarBlocks = blocks.map(b => ({ ...b, conflictDays: conflicting[b.id] ?? [] }));
+
+  // the active course's other sections for the type being picked, as dashed blocks;
+  // sections meeting at the same time (labs in different rooms) share one block
+  const ghosts = useMemo(() => {
+    if (!activeCourse || !activeType || readOnly) return [];
+    const groups = new Map();
+    candidates(activeOptions, activePicked, activeType)
+      .filter(option => !activePicked.includes(option.crn))
+      .forEach(option => option.meetings.filter(isTimed).forEach(meeting => {
+        const key = `${meeting.days.join('')}-${meeting.start}-${meeting.end}`;
+        const group = groups.get(key) ?? { ...meeting, id: key, options: [] };
+        group.options.push(option);
+        groups.set(key, group);
+      }));
+    return [...groups.values()].map(group => {
+      const count = group.options.length;
+      return {
+        ...group,
+        crns: group.options.map(o => o.crn),
+        colorIndex: activeCourse.colorIndex,
+        label: `${shortType(activeType)} · ${courseName(activeCourse)}`,
+        subtitle: count > 1 ? `${formatRange(group.start, group.end)} · ${count} sections` : formatRange(group.start, group.end),
+        detail: count > 1 ? null : group.room,
+        tooltip: `Click to pick this ${shortType(activeType).toLowerCase()}`,
+        conflict: group.options.every(o => conflictFor(o)),
+      };
+    });
+  }, [activeCourse, activeType, activeOptions, activePicked, readOnly, conflictFor]);
+
+  const pickGhost = (ghost, anchor) => {
+    if (ghost.options.length === 1) {
+      schedule.pickSection(activeId, ghost.options[0].crn);
+      setHoveredCrns(null);
+    } else {
+      setGhostMenu({ ghost, anchor });
+    }
+  };
+
+  // search: add courses offered this term, show the rest in the details drawer
+  const handleSelect = ({ value: course }) => {
+    updateFilter('searchTerm', '');
+    if (course.terms?.includes(semester.name)) {
+      schedule.addCourse(course).catch(error => {
+        console.error(error);
+        toast({ title: `Couldn't add ${courseName(course)}`, status: 'error', duration: 3000, position: 'top' });
+      });
+    } else {
+      restoreFullCourse(course).then(setDetails).catch(console.error);
+    }
+  };
+
+  // opens the editor on a block once it has rendered
+  const selectBlock = useCallback((id, { isNew = false, title = '' } = {}) => {
+    requestAnimationFrame(() => {
+      const element = calendarRef.current?.querySelector(`[data-block-id="${id}"]`) ?? calendarRef.current;
+      setEditing({ id, anchor: element, isNew, title });
+    });
   }, []);
 
-  // saves the selected course to localStorage whenever it changes
+  // A dragged-out block is a draft, as in Notion Calendar: it's only made once it has a
+  // name, so closing the editor on a blank one (Escape, Enter or a click elsewhere) drops it.
+  const createBlock = useCallback((block) => {
+    selectBlock(schedule.addBlock(block), { isNew: true });
+  }, [schedule.addBlock, selectBlock]);
+
+  const openBlock = (id, anchor) => setEditing({ id, anchor, title: blocks.find(b => b.id === id)?.title });
+
+  const closeEditor = useCallback(() => {
+    setEditing(null);
+    if (!editing) return;
+    const block = blocks.find(b => b.id === editing.id);
+    if (!block) return;
+    if (!block.title.trim()) {
+      // a draft goes; a named block that was cleared keeps its old name
+      if (editing.isNew) schedule.discardBlock(block.id);
+      else schedule.updateBlock(block.id, { title: editing.title }, { record: false });
+    } else if (!editing.isNew && block.title !== editing.title) {
+      schedule.recordRename(block.id, editing.title);
+    }
+  }, [editing, blocks, schedule.discardBlock, schedule.updateBlock, schedule.recordRename]);
+
+  // deleting is instant, with Undo in a toast (and Cmd/Ctrl+Z) to bring it back
+  const showUndo = (title) => {
+    toast.closeAll();
+    toast({
+      position: 'bottom',
+      duration: 5000,
+      render: ({ onClose }) => (
+        <div className='flex items-center gap-4 rounded-lg bg-background-opposite px-4 py-2.5 text-sm text-opposite shadow-lg'>
+          <span>{title}</span>
+          <button
+            onClick={() => { schedule.undo(); onClose(); }}
+            className='font-semibold underline-offset-2 hover:underline'
+          >
+            Undo
+          </button>
+        </div>
+      ),
+    });
+  };
+
+  const deleteBlock = (id) => {
+    const block = blocks.find(b => b.id === id);
+    setEditing(null);
+    if (!block) return;
+    if (!block.title.trim() && editing?.isNew) return schedule.discardBlock(id);
+    schedule.removeBlock(id);
+    showUndo(`Deleted ${block.title.trim() || 'block'}`);
+  };
+
+  // copies land a block at another time: Cmd/Ctrl+D and Option/Alt-drag beside the
+  // original, Cmd/Ctrl+V where the pointer is
+  const duplicateBlock = useCallback((id, changes = {}) => {
+    const block = blocks.find(b => b.id === id);
+    if (!block) return;
+    const { id: _, ...rest } = block;
+    const title = rest.title.trim() || 'Untitled';
+    selectBlock(schedule.addBlock({ ...rest, title, ...changes }), { title });
+  }, [blocks, schedule.addBlock, selectBlock]);
+
+  const hoveredSlot = useRef(null);
+  const clipboard = useRef(null);
+  const pasteBlock = () => {
+    const block = clipboard.current;
+    if (!block) return;
+    const slot = hoveredSlot.current;
+    if (!slot) return selectBlock(schedule.addBlock(block), { title: block.title });
+    const length = block.end - block.start;
+    const start = Math.min(slot.minutes, 24 * 60 - length);
+    // a block on several days keeps its spread, starting from the hovered day
+    const shift = WEEK.indexOf(slot.day) - WEEK.indexOf(block.days[0]);
+    const days = block.days.map(day => WEEK[WEEK.indexOf(day) + shift]);
+    selectBlock(schedule.addBlock({ ...block, start, end: start + length, days: days.every(Boolean) ? days : [slot.day] }), { title: block.title });
+  };
+
+  // Notion Calendar's keys: Delete removes what's selected (a class asks first), Escape
+  // deselects, Cmd/Ctrl+Z undoes, +D duplicates, +C/+X/+V copy, cut and paste a block.
+  // Ignored while typing, so text fields keep their own undo and copy.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (selectedCourse) {
-        localStorage.setItem(selectedKey, JSON.stringify(selectedCourse));
-      } else {
-        localStorage.removeItem(selectedKey);
+    if (readOnly) return;
+    const onKey = (event) => {
+      if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      if (details || confirmRemove || ghostMenu) return;
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      const block = editing && blocks.find(b => b.id === editing.id);
+
+      if (mod && key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        setEditing(null);
+        schedule.undo();
+      } else if (key === 'delete' || key === 'backspace') {
+        if (block) {
+          event.preventDefault();
+          deleteBlock(block.id);
+        } else if (activeId) {
+          event.preventDefault();
+          setConfirmRemove(activeId);
+        }
+      } else if (key === 'escape' && !editing && activeId) {
+        setActiveId(null);
+      } else if (mod && key === 'd' && block) {
+        event.preventDefault();
+        duplicateBlock(block.id);
+      } else if (mod && (key === 'c' || key === 'x') && block && !window.getSelection()?.toString()) {
+        event.preventDefault();
+        const { id: _, ...rest } = block;
+        clipboard.current = { ...rest, title: rest.title.trim() || 'Untitled' };
+        if (key === 'x') deleteBlock(block.id);
+      } else if (mod && key === 'v' && clipboard.current) {
+        event.preventDefault();
+        pasteBlock();
       }
-    }
-  }, [selectedCourse]);
-
-  // keeps the pinned courses synced with localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // remove initialPin before saving
-      const coursesToSave = pinCourses.map(({ initialPin, ...course }) => course);
-      localStorage.setItem(pinnedKey, JSON.stringify(coursesToSave));
-    }
-  }, [pinCourses]);
-
-  // processes the selected course data and generates the grade distribution graph
-  const graphData = useMemo(() => {
-    if (!selectedCourse) return null;
-
-    sanitizeDescription(selectedCourse);
-    const allProfs = collectAllProfessors(selectedCourse.instructor);
-    const { grades } = calculateGradesAndGPA(allProfs, selectedCourse.gpa);
-    return {
-      labels,
-      datasets: averageAllData(grades),
     };
-  }, [selectedCourse]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
-  // updates the graph and adds a brief highlight animation to the course details section
-  useEffect(() => {
-    if (!graphData) return;
-    setGpaGraph(graphData);
-
-    // Highlight course details section
-    const highlightCourseDiv = async () => {
-      const courseDiv = document.getElementById("course_details");
-      courseDiv.classList.add("ring-4", "ring-yellow-500");
-      await new Promise(resolve => setTimeout(resolve, 500));
-      courseDiv.classList.remove("ring-4", "ring-yellow-500");
-    };
-
-    highlightCourseDiv();
-  }, [graphData]);
-
-  // handles when a user selects a course from the search dropdown; results are
-  // card summaries, so this fetches the full course (grades, gened)
-  const handleOnSelect = (course) => {
-    if (!course) return;
-    updateFilter('searchTerm', '');
-    restoreFullCourse(course.value)
-      .then(setSelectedCourse)
-      .catch(console.error);
+  // the image is the week as it is: no picker, hover or open course
+  const saveImage = async () => {
+    setActiveId(null);
+    setHoveredCrns(null);
+    setCapturing(true);
+    try {
+      // let the calendar re-render without the picker before taking the picture
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const { toPng } = await import('html-to-image');
+      const node = calendarRef.current;
+      const url = await toPng(node, { pixelRatio: 2, backgroundColor: getComputedStyle(node).backgroundColor });
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${semester.name} schedule.png`;
+      link.click();
+    } finally {
+      setCapturing(false);
+    }
   };
 
-  // removes a course from the pinned courses list and clears selection if it was selected
-  const handleCourseRemove = (detailId) => {
-    setPinCourses(prevCourses => prevCourses.filter(course => course.detailId !== detailId));
-    if (selectedCourse?.detailId === detailId) {
-      setSelectedCourse(null);
-      localStorage.removeItem(selectedKey);
-    }
+  // the PDF export still takes the old lecture shape (military times, "12:30 PM" strings)
+  const military = (minutes) => Math.floor(minutes / 60) * 100 + (minutes % 60);
+  const savePdf = async () => {
+    // jsPDF and its embedded fonts are large, so they load only when asked for
+    const { openPDFInNewTab } = await import('@/lib/pdf');
+    openPDFInNewTab(meetings.map(m => ({
+      name: courseName(m.course),
+      type: m.type,
+      day: m.timed ? m.days : ['None'],
+      start: m.timed ? military(m.start) : 0,
+      end: m.timed ? military(m.end) : 0,
+      startTime: m.timed ? convertTo12HourFormat(toClock(m.start)) : 'No Meeting Time',
+      room: m.room,
+      instructors: m.instructors,
+      crn: m.crn,
+      courseDetails: m.course,
+    })), semester.name);
   };
+
+  const shareCode = encodeSchedule(schedule.snapshot);
+  const origin = typeof window === 'undefined' ? 'https://boilerclasses.com' : window.location.origin;
+  const shareUrl = `${origin}/schedule?s=${shareCode}`;
+  const feedUrl = `${origin}/api/calendar.ics?s=${shareCode}`;
+
+  const editingBlock = editing && blocks.find(b => b.id === editing.id);
+
+  const totalCredits = courses.filter(schedule.isReady).reduce((sum, c) => [sum[0] + c.credits[0], sum[1] + c.credits[1]], [0, 0]);
+  const usedWeekend = [...timedMeetings, ...blocks].some(e => e.days.some(d => !WEEKDAYS.includes(d)));
+  const mobileDays = usedWeekend ? WEEK : WEEKDAYS;
 
   return (
-    <>
-      <div id="parent" className={`flex flex-col lg:flex-row gap-10 min-h-screen bg-super container mx-auto px-4 text-primary ${inter.className}`}>
-        {/* Left Side */}
-        <div className='flex flex-col w-full lg:w-1/2 gap-2'>
-          <div className='mx-2'>
-            <div className='flex flex-row flex-wrap items-center gap-2 mb-4'>
-              <span className='text-sm text-tertiary'>Planning for</span>
-              <div role='radiogroup' aria-label='Semester' className='flex flex-row rounded-full border border-[rgb(var(--background-secondary-color))] bg-background p-0.5'>
-                {SCHEDULE_SEMESTERS.map(option => (
-                  <button
-                    key={option.code}
-                    role='radio'
-                    aria-checked={option.code === semester.code}
-                    onClick={() => setSemester(option)}
-                    className={`px-3 py-1 text-sm rounded-full transition ${option.code === semester.code
-                      ? 'bg-yellow-600 text-white'
-                      : 'text-secondary hover:bg-background-secondary'}`}
-                  >
-                    {option.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <ScheduleCalendar semester={semester} courses={pinCourses} setIsLoading={setIsLoading} setSelectedCourse={setSelectedCourse} onCourseRemove={handleCourseRemove} />
-          </div>
+    // From md up the planner fills the window like a calendar app: the sidebar and the
+    // calendar each scroll on their own, so the calendar stays in view while picking.
+    <div className='mx-auto max-w-[1600px] px-4 pb-6 md:pb-4 md:h-[100dvh] md:flex md:flex-col'>
+      {/* top bar */}
+      <header className='flex flex-wrap items-center gap-3 py-4 pr-12 md:flex-none'>
+        <Link href='/' className='flex items-center gap-2'>
+          <img src='/boilerclasses-FULL.png' className='h-7 w-7' alt='BoilerClasses Logo' />
+          <span className='font-semibold'>BoilerClasses</span>
+        </Link>
+        <span className='text-tertiary'>/</span>
+        <span className='font-semibold'>Schedule</span>
+        <div role='radiogroup' aria-label='Semester' className='flex rounded-full border border-[rgb(var(--background-secondary-color))] bg-background p-0.5'>
+          {SCHEDULE_SEMESTERS.map(option => (
+            <button
+              key={option.code}
+              role='radio'
+              aria-checked={option.code === semester.code}
+              onClick={() => setSemester(option)}
+              className={`px-3 py-1 text-sm rounded-full transition ${option.code === semester.code
+                ? 'bg-yellow-600 text-white'
+                : 'text-secondary hover:bg-background-secondary'}`}
+            >
+              {option.name}
+            </button>
+          ))}
         </div>
+        <span className='text-xs text-tertiary'>
+          {totalCredits[0] === totalCredits[1] ? totalCredits[0] : `${totalCredits[0]}–${totalCredits[1]}`} credits
+        </span>
+        <div className='flex-1' />
+        <ExportMenu
+          shareUrl={shareUrl}
+          feedUrl={feedUrl}
+          termName={semester.name}
+          hasBlocks={blocks.length > 0}
+          disabled={!courses.length && !blocks.length}
+          onImage={saveImage}
+          onPdf={savePdf}
+        />
+      </header>
 
-        {/* Right Side */}
-        <div id="right_side" className='flex flex-col w-full lg:w-1/2'>
-          <div className="mb-4">
+      {readOnly && (
+        <div className='mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-yellow-600/40 bg-yellow-600/10 px-4 py-3 text-sm md:flex-none'>
+          <span className='flex-1 min-w-[200px]'>
+            You&apos;re viewing a shared {semester.name} schedule. Copy it to start planning from it, or go back to yours.
+          </span>
+          <button
+            onClick={() => onLeaveShared(true)}
+            className='rounded-full bg-yellow-600 px-3 py-1 text-white font-medium hover:bg-yellow-700 transition'
+          >
+            Copy to my planner
+          </button>
+          <button
+            onClick={() => onLeaveShared(false)}
+            className='rounded-full border border-[rgb(var(--background-secondary-color))] bg-background px-3 py-1 hover:bg-background-secondary transition'
+          >
+            Back to my schedule
+          </button>
+        </div>
+      )}
+
+      <div className='flex flex-col md:flex-row gap-4 md:flex-1 md:min-h-0'>
+        {/* sidebar */}
+        <aside className='flex flex-col gap-4 md:w-[300px] lg:w-[340px] md:shrink-0 md:overflow-y-auto md:pr-1 md:pb-2'>
+          {!readOnly && (
             <CourseSearch
-              courses={courses}
+              courses={searchResults}
               semester={semester.name}
-              onSelect={handleOnSelect}
+              onSelect={handleSelect}
               searchTerm={filters.searchTerm}
               updateFilter={updateFilter}
             />
-          </div>
-          {selectedCourse === null ? (
-            <div className='flex flex-col justify-center mx-12 max-h-screen h-full'>
-              <h1 className='font-bold text-2xl lg:text-3xl'>Welcome to <span className='text-yellow-500'>BoilerClasses</span></h1>
-              <h2 className='font-light text-sm'>
-                Utilize the scheduling assistant to plan your semester. Use the search bar to find courses, and add them to show up in the schedule!
-              </h2>
-            </div>
-          ) : (
-            <>
-              {/* Selected Course */}
-              <div className='flex flex-col lg:h-screen'>
-                <div id="course_details" className='flex flex-col lg:flex-row gap-2 h-1/2 overflow-y-scroll p-4 rounded-xl shadow-[rgb(var(--background-opposite))]/10 bg-background shadow-md border-[rgb(var(--background-secondary-color))] border transition-all'>
-
-                  {/* LEFT SIDE - Course Info */}
-                  <div className='lg:w-1/2'>
-                    <h1 className='font-bold text-3xl'>{selectedCourse.subjectCode} {selectedCourse.courseCode}</h1>
-                    <h2 className='font-bold text-lg'>{selectedCourse.title}</h2>
-
-                    {/* Description Display */}
-                    <p className="text-sm text-secondary mt-1 pb-4 break-words">{selectedCourse.description}</p>
-                  </div>
-
-                  {/* RIGHT SIDE - Course Details */}
-                  <div className="flex flex-col lg:w-1/2 gap-2 h-fit">
-
-                    <div className='flex flex-row self-center lg:self-end gap-2'>
-
-                      {/* Open in details button */}
-                      <a
-                        href={`https://www.boilerclasses.com/detail/${selectedCourse.detailId}`}
-                        target="_blank"
-                      >
-                        <div className="flex gap-1 self-end rounded-full border h-8 items-center justify-center px-2 text-sm cursor-pointer transition border-[rgb(var(--background-secondary-color))] bg-background hover:bg-background-secondary">
-                          <IoMdOpen />
-                          <span className='whitespace-nowrap'>Open Details</span>
-                        </div>
-                      </a>
-
-                      {/* Add Course button */}
-                      {selectedCourse.instructor[semester.name] && selectedCourse.instructor[semester.name].length > 0 ? (
-                        pinCourses.some(course => course.detailId === selectedCourse.detailId) ? (
-                          <button
-                            className="flex self-end rounded-full border h-8 w-8 items-center justify-center p-0 font-bold cursor-pointer transition border-red-500 bg-red-700 hover:bg-red-900 text-white"
-                            onClick={() => setPinCourses(pinCourses.filter(course => course.detailId !== selectedCourse.detailId))}
-                          >
-                            {isLoading ? (
-                              <div className="flex items-center justify-center"><Spinner /></div>
-                            ) : (
-                              <div className="flex items-center justify-center"><IoMdTrash size={16} /></div>
-                            )}
-                          </button>
-                        ) : (
-                          <button
-                            className="text-white flex self-end gap-0.5 rounded-full border h-8 items-center justify-center px-2 text-sm cursor-pointer transition border-green-500 bg-green-700 hover:bg-green-900"
-                            onClick={() => {
-                              setPinCourses([...pinCourses, {
-                                ...selectedCourse,
-                                initialPin: true,
-                                tmp_inc: Date.now()
-                              }]);
-                            }}
-                          >
-                            {isLoading ? (
-                              <div className="flex items-center justify-center"><Spinner /></div>
-                            ) : (<>
-                              <IoMdAdd />
-                              <span className='whitespace-nowrap '>Add Course</span>
-                            </>)}
-                          </button>
-                        )) : (
-                        <Tooltip
-                          label={`Course not offered in ${semester.name}`}
-                          aria-label="Course availability tooltip"
-                          hasArrow
-                          placement="bottom"
-                          background="#a16207"
-                        >
-                          <div
-                            className="flex self-end rounded-full border h-8 w-8 items-center justify-center p-0 font-bold cursor-pointer transition border-yellow-700 bg-yellow-900 hover:bg-yellow-700"
-                          >
-                            <div className="flex items-center justify-center"><IoIosWarning size={16} /></div>
-                          </div>
-                        </Tooltip>
-                      )}
-
-                    </div>
-
-                    <div className='grid grid-cols-2 gap-4 w-full'>
-
-                      {/* Course Type Display */}
-                      <div className='flex flex-col'>
-                        <p className='font-bold text-sm'>Course Type</p>
-
-                        <div className='flex flex-row gap-1 flex-wrap'>
-                          {/* Schedule Type Display */}
-                          {selectedCourse.sched.map((s, i) => (
-                            <span className='text-white text-xs px-2 py-1 rounded-full border-solid border bg-purple-600 border-purple-800 whitespace-nowrap text-ellipsis overflow-hidden hover:overflow-visible transition-all z-10'
-                              key={i}>
-                              {s}
-                            </span>
-                          ))}
-
-
-                          {/* Gened Type Display */}
-                          {selectedCourse.gened.length > 0 && selectedCourse.gened.map((gened, i) => (
-                            <span className={`text-white text-xs px-2 py-1 rounded-full border-solid border bg-[#64919b] border-[#415f65] whitespace-nowrap transition-all`}
-                              key={i}>
-                              {genedsOptions.filter(x => x.value === gened)[0]?.label || ''}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-
-                      {/* Credits Display */}
-                      <div className="text-sm font-bold flex flex-col">
-                        Credits
-                        <p className='px-4 text-opposite bg-background-opposite rounded-md text-center w-fit'>
-                          {selectedCourse.credits[0] === selectedCourse.credits[1]
-                            ? `${selectedCourse.credits[0]}`
-                            : `${selectedCourse.credits[0]} - ${selectedCourse.credits[1]}`}
-                        </p>
-                      </div>
-
-                    </div>
-
-
-
-                    {/* Instructors Display */}
-                    <div>
-                      <p className="text-sm font-bold">Instructors</p>
-                      <div className="flex flex-wrap flex-row gap-x-1 text-sm text-blue-400 font-light">
-
-
-                        {selectedCourse.instructor[semester.name] ? (
-                          selectedCourse.instructor[semester.name].map((prof, i) => (
-
-                            <span key={i}>
-                              <a
-                                href={`https://www.ratemyprofessors.com/search/professors/783?q=${prof.split(" ")[0]} ${prof.split(" ")[prof.split(" ").length - 1]}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className='underline decoration-dotted hover:text-blue-300 transition-all duration-300 ease-out'
-                                key={i}
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                {prof}
-                              </a>
-                              {i < selectedCourse.instructor[semester.name].length - 1 && ", "}
-                            </span>
-                          ))
-                        ) : (
-                          <p className='text-primary text-sm font-light text-left w-full'>No instructors listed for {semester.name}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Prerequisites Display */}
-                    {selectedCourse.prereqs && (
-                      <div className='w-full'>
-                        <p className="text-sm font-bold">Prerequisites</p>
-                        <Prereqs
-                          course={selectedCourse}
-                          scheduler={true}
-                        />
-                      </div>
-                    )}
-
-                    {/* gpaModal */}
-                    <div className='w-full'>
-                      <p className="text-sm font-bold">GPA Avg Per Semester</p>
-                      <ScheduleGpaModal
-                        course={selectedCourse}
-                        semester={semester.name}
-                      />
-                    </div>
-
-                  </div>
-                </div>
-                {/* <p>{selectedCourse.gpa[""]}</p> */}
-
-
-                {/* Graph */}
-                <div className="my-4">
-                  {gpaGraph.datasets &&
-                    gpaGraph.datasets.length > 0 &&
-                    !gpaGraph.datasets[0].data.every(value => value === 0) ? (
-                    <div className='border border-[rgb(var(--background-secondary-color))] shadow-md shadow-[rgb(var(--background-opposite))]/10 rounded-xl'>
-                      <div className='h-full'>
-                        <Graph data={gpaGraph} scheduler />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="border border-[rgb(var(--background-secondary-color))] shadow-md shadow-[rgb(var(--background-opposite))]/10 rounded-xl bg-background p-4">
-                      <h1 className="text-center text-md font-light text-primary py-4">
-                        No grade data available for this course.
-                      </h1>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
           )}
-        </div>
+          <CourseList
+            courses={courses}
+            options={options}
+            picks={picks}
+            activeId={activeId}
+            readOnly={readOnly}
+            isReady={schedule.isReady}
+            onSelect={setActiveId}
+            onRemove={setConfirmRemove}
+            onDetails={setDetails}
+            renderPicker={(course, courseOptions) => (
+              <SectionPicker
+                course={course}
+                options={courseOptions}
+                picked={picks[course.detailId] ?? []}
+                activeType={activeType ?? courseTypes(courseOptions)[0]}
+                setActiveType={setActiveType}
+                conflictFor={conflictFor}
+                hoveredCrns={hoveredCrns}
+                onHover={setHoveredCrns}
+                onPick={(crn) => schedule.pickSection(course.detailId, crn)}
+                onUnpick={(crn) => schedule.unpickSection(course.detailId, crn)}
+              />
+            )}
+          />
+
+          {courses.length > 0 && (
+            <section className='flex flex-col gap-2'>
+              <h2 className='text-xs font-semibold uppercase tracking-wide text-tertiary px-1'>Exams</h2>
+              {exams.length ? (
+                <ul className='flex flex-col gap-1'>
+                  {exams.map(exam => (
+                    <li key={`${exam.course.detailId}-${exam.kind}-${exam.date}`} className='flex items-start gap-2 rounded-lg bg-background px-3 py-2 text-xs'>
+                      <span className='mt-1 h-2 w-2 shrink-0 rounded-full' style={{ background: eventColor(exam.colorIndex) }} />
+                      <span className='flex-1'>
+                        <span className='font-semibold'>{courseName(exam.course)}</span>{' '}
+                        <span className='text-secondary'>{EXAM_LABELS[exam.kind]}</span>
+                        <span className='block text-tertiary'>
+                          {shortDate(exam.date)} · {exam.sittings.map(s => formatRange(toMinutes(s.start), toMinutes(s.end))).join(' or ')}
+                          {exam.rooms.length ? ` · ${exam.rooms.slice(0, 2).join(', ')}${exam.rooms.length > 2 ? '…' : ''}` : ''}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className='px-1 text-xs text-tertiary'>
+                  No exam times yet. They show up here, and in your calendar subscription, once the registrar publishes them.
+                </p>
+              )}
+            </section>
+          )}
+          <div className='hidden md:block mt-auto'><Footer compact /></div>
+        </aside>
+
+        {/* calendar */}
+        <main className='flex-1 min-w-0 flex flex-col gap-2 md:min-h-0'>
+          {isMobile && (
+            <div className='flex gap-1'>
+              {mobileDays.map(day => (
+                <button
+                  key={day}
+                  onClick={() => setMobileDay(day)}
+                  className={`flex-1 rounded-md py-1.5 text-xs font-medium ${mobileDay === day ? 'bg-background-opposite text-opposite' : 'bg-background text-secondary'}`}
+                >
+                  {day}
+                </button>
+              ))}
+            </div>
+          )}
+          <WeekCalendar
+            ref={calendarRef}
+            meetings={calendarMeetings}
+            blocks={calendarBlocks}
+            ghosts={ghosts}
+            dates={dates}
+            className={capturing ? 'shrink-0' : 'md:flex-1 md:min-h-0'}
+            days={isMobile && !capturing ? [mobileDay] : null}
+            caption={capturing ? `${semester.name} schedule` : null}
+            activeId={activeId}
+            selectedBlockId={editing?.id}
+            hoveredCrns={hoveredCrns}
+            readOnly={readOnly}
+            onMeetingClick={(meeting) => setActiveId(meeting.detailId)}
+            onGhostClick={pickGhost}
+            onGhostHover={setHoveredCrns}
+            onBlockCreate={createBlock}
+            onBlockChange={schedule.updateBlock}
+            onBlockDuplicate={duplicateBlock}
+            onBlockClick={openBlock}
+            onSlotHover={(slot) => { hoveredSlot.current = slot; }}
+          />
+          {unscheduled.length > 0 && (
+            <p className='px-1 text-xs text-tertiary md:flex-none'>
+              Not on the calendar (no set time): {[...new Set(unscheduled.map(m => `${courseName(m.course)} ${shortType(m.type)}${m.room ? ` (${m.room})` : ''}`))].join(', ')}
+            </p>
+          )}
+          {!readOnly && (
+            <p className='px-1 text-xs text-tertiary md:flex-none'>
+              Tip: drag on empty space to block off time for work, clubs or the gym, and give it a name to keep it. {isMac ? 'Option' : 'Alt'}-drag a block to copy it, Delete removes what's selected, and {isMac ? '⌘' : 'Ctrl+'}Z undoes.
+            </p>
+          )}
+        </main>
       </div>
-    </>
+      <div className='md:hidden'><Footer /></div>
+
+      {editingBlock && (
+        <BlockEditor
+          block={editingBlock}
+          anchor={editing.anchor}
+          readOnly={readOnly}
+          isNew={Boolean(editing.isNew)}
+          onChange={(changes) => schedule.updateBlock(editingBlock.id, changes, { record: !('title' in changes) })}
+          onDelete={() => deleteBlock(editingBlock.id)}
+          onClose={closeEditor}
+        />
+      )}
+
+      {ghostMenu && (
+        <FloatingCard anchor={ghostMenu.anchor} onClose={() => setGhostMenu(null)}>
+          <div className='p-2 flex flex-col gap-1'>
+            <div className='px-2 py-1 text-xs text-tertiary'>
+              {ghostMenu.ghost.options.length} sections at {formatRange(ghostMenu.ghost.start, ghostMenu.ghost.end)}
+            </div>
+            {ghostMenu.ghost.options.map(option => {
+              const conflict = conflictFor(option);
+              return (
+                <button
+                  key={option.crn}
+                  onMouseEnter={() => setHoveredCrns([option.crn])}
+                  onMouseLeave={() => setHoveredCrns(null)}
+                  onClick={() => {
+                    schedule.pickSection(activeId, option.crn);
+                    setGhostMenu(null);
+                    setHoveredCrns(null);
+                  }}
+                  className='rounded-lg px-2 py-1.5 text-left text-xs hover:bg-background-secondary transition'
+                >
+                  <div className='font-medium'>{option.meetings.find(isTimed)?.room ?? 'TBA'} · CRN {option.crn}</div>
+                  <div className='text-tertiary'>
+                    {option.instructors.join(', ') || 'Instructor TBA'}
+                    {conflict && <span className='text-red-500'> · overlaps {conflict}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </FloatingCard>
+      )}
+
+      <AlertDialog
+        isOpen={Boolean(confirmRemove)}
+        leastDestructiveRef={cancelRemoveRef}
+        onClose={() => setConfirmRemove(null)}
+        isCentered
+      >
+        <AlertDialogOverlay bg='blackAlpha.500'>
+          <AlertDialogContent bg='rgb(var(--background-color))' color='rgb(var(--text-color))' mx={4}>
+            <AlertDialogHeader fontSize='lg'>
+              Remove {(() => { const c = courses.find(x => x.detailId === confirmRemove); return c && schedule.isReady(c) ? courseName(c) : 'this course'; })()}?
+            </AlertDialogHeader>
+            <AlertDialogBody className='text-sm text-secondary'>
+              It and the sections you picked come off your {semester.name} schedule. You can add it again from search.
+            </AlertDialogBody>
+            <AlertDialogFooter className='gap-2'>
+              <button
+                ref={cancelRemoveRef}
+                onClick={() => setConfirmRemove(null)}
+                className='rounded-full border border-[rgb(var(--background-secondary-color))] px-4 py-1.5 text-sm hover:bg-background-secondary transition'
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { schedule.removeCourse(confirmRemove); setConfirmRemove(null); }}
+                className='rounded-full bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition'
+              >
+                Remove
+              </button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      <CourseDetailsDrawer
+        course={details}
+        semester={semester}
+        inPlan={Boolean(details && courses.some(c => c.detailId === details.detailId))}
+        onAdd={(course) => { schedule.addCourse(course); setDetails(null); }}
+        onPlanInTerm={(option, course) => { setDetails(null); onPlanInTerm(option, course); }}
+        onClose={() => setDetails(null)}
+      />
+    </div>
   );
-}
+};
 
 export default Schedule;

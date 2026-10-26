@@ -8,8 +8,29 @@ import {
 import FeedbackModal from '@/components/feedbackModal';
 
 
-const Footer = () => {
+const linkStyle = 'underline decoration-dashed decoration-1 underline-offset-2 hover:text-secondary';
+
+// `compact` is for narrow columns (the schedule sidebar): small, left-aligned, and with
+// the links spaced apart instead of joined by dots that strand at line ends.
+const Footer = ({ compact = false }) => {
     const { isOpen, onOpen, onClose } = useDisclosure();
+
+    if (compact) {
+        return (
+            <div className='px-1 py-3 text-[11px] leading-relaxed text-tertiary'>
+                <p>
+                    An <Link href={`/dir`} className={linkStyle}>unofficial catalog</Link> for Purdue courses made by Purdue students,
+                    maintained by <a href='https://boilerexams.com' target="_blank" rel="noopener noreferrer" className={linkStyle}>Boilerexams</a>.
+                </p>
+                <p className='mt-1 flex flex-wrap gap-x-3'>
+                    <a href='https://github.com/boilerclasses/boilerclasses' target="_blank" rel="noopener noreferrer" className={linkStyle}>GitHub</a>
+                    <button onClick={onOpen} className={linkStyle}>Feedback</button>
+                    <a href='https://boilerexams.com/apply' target="_blank" rel="noopener noreferrer" className={linkStyle}>Join the team</a>
+                </p>
+                <FeedbackModal isOpen={isOpen} onClose={onClose} />
+            </div>
+        );
+    }
 
     return (
         <div className='grid justify-center py-5 relative'>

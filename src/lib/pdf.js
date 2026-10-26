@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { convertNumberToTime } from './timeUtils';
-import { translateType } from '@/components/calendar';
+import { shortType as translateType } from '@/lib/schedule';
 import { DAYS, TIMES } from '@/components/schedule/utils/constants';
 import { graphColors } from "@/lib/utils";
 
