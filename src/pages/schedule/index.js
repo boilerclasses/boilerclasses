@@ -165,7 +165,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
     onPendingAdded();
   }, []);
   const [hoveredCrns, setHoveredCrns] = useState(null);
-  const [editing, setEditing] = useState(null);      // {id, anchor} of the block being edited
+  const [editing, setEditing] = useState(null);      // {id, anchor, isNew, title} of the block being edited
   const [ghostMenu, setGhostMenu] = useState(null);  // {ghost, anchor} for stacked sections
   const [details, setDetails] = useState(null);      // course shown in the drawer
   const [confirmRemove, setConfirmRemove] = useState(null); // detailId of a course to remove
@@ -174,6 +174,8 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
   const [mobileDay, setMobileDay] = useState(() => WEEKDAYS[(new Date().getDay() + 6) % 7] ?? 'Mon');
   const [capturing, setCapturing] = useState(false);
   const calendarRef = useRef(null);
+  const [isMac, setIsMac] = useState(false); // for shortcut names in the tip, set after hydrating
+  useEffect(() => setIsMac(/Mac|iPhone|iPad/.test(navigator.platform)), []);
 
   const activeCourse = courses.find(c => c.detailId === activeId) ?? null;
   const activeOptions = activeCourse && Array.isArray(options[activeId]) ? options[activeId] : [];
@@ -278,35 +280,132 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
     }
   };
 
-  const createBlock = useCallback((block) => {
-    const id = schedule.addBlock(block);
-    // open the editor on the new block once it has rendered
+  // opens the editor on a block once it has rendered
+  const selectBlock = useCallback((id, { isNew = false, title = '' } = {}) => {
     requestAnimationFrame(() => {
       const element = calendarRef.current?.querySelector(`[data-block-id="${id}"]`) ?? calendarRef.current;
-      setEditing({ id, anchor: element, isNew: true });
+      setEditing({ id, anchor: element, isNew, title });
     });
-  }, [schedule.addBlock]);
+  }, []);
 
-  // Delete/Backspace removes what's selected: a personal block at once, a class after
-  // confirming. Ignored while typing.
+  // A dragged-out block is a draft, as in Notion Calendar: it's only made once it has a
+  // name, so closing the editor on a blank one (Escape, Enter or a click elsewhere) drops it.
+  const createBlock = useCallback((block) => {
+    selectBlock(schedule.addBlock(block), { isNew: true });
+  }, [schedule.addBlock, selectBlock]);
+
+  const openBlock = (id, anchor) => setEditing({ id, anchor, title: blocks.find(b => b.id === id)?.title });
+
+  const closeEditor = useCallback(() => {
+    setEditing(null);
+    if (!editing) return;
+    const block = blocks.find(b => b.id === editing.id);
+    if (!block) return;
+    if (!block.title.trim()) {
+      // a draft goes; a named block that was cleared keeps its old name
+      if (editing.isNew) schedule.discardBlock(block.id);
+      else schedule.updateBlock(block.id, { title: editing.title }, { record: false });
+    } else if (!editing.isNew && block.title !== editing.title) {
+      schedule.recordRename(block.id, editing.title);
+    }
+  }, [editing, blocks, schedule.discardBlock, schedule.updateBlock, schedule.recordRename]);
+
+  // deleting is instant, with Undo in a toast (and Cmd/Ctrl+Z) to bring it back
+  const showUndo = (title) => {
+    toast.closeAll();
+    toast({
+      position: 'bottom',
+      duration: 5000,
+      render: ({ onClose }) => (
+        <div className='flex items-center gap-4 rounded-lg bg-background-opposite px-4 py-2.5 text-sm text-opposite shadow-lg'>
+          <span>{title}</span>
+          <button
+            onClick={() => { schedule.undo(); onClose(); }}
+            className='font-semibold underline-offset-2 hover:underline'
+          >
+            Undo
+          </button>
+        </div>
+      ),
+    });
+  };
+
+  const deleteBlock = (id) => {
+    const block = blocks.find(b => b.id === id);
+    setEditing(null);
+    if (!block) return;
+    if (!block.title.trim() && editing?.isNew) return schedule.discardBlock(id);
+    schedule.removeBlock(id);
+    showUndo(`Deleted ${block.title.trim() || 'block'}`);
+  };
+
+  // copies land a block at another time: Cmd/Ctrl+D and Option/Alt-drag beside the
+  // original, Cmd/Ctrl+V where the pointer is
+  const duplicateBlock = useCallback((id, changes = {}) => {
+    const block = blocks.find(b => b.id === id);
+    if (!block) return;
+    const { id: _, ...rest } = block;
+    const title = rest.title.trim() || 'Untitled';
+    selectBlock(schedule.addBlock({ ...rest, title, ...changes }), { title });
+  }, [blocks, schedule.addBlock, selectBlock]);
+
+  const hoveredSlot = useRef(null);
+  const clipboard = useRef(null);
+  const pasteBlock = () => {
+    const block = clipboard.current;
+    if (!block) return;
+    const slot = hoveredSlot.current;
+    if (!slot) return selectBlock(schedule.addBlock(block), { title: block.title });
+    const length = block.end - block.start;
+    const start = Math.min(slot.minutes, 24 * 60 - length);
+    // a block on several days keeps its spread, starting from the hovered day
+    const shift = WEEK.indexOf(slot.day) - WEEK.indexOf(block.days[0]);
+    const days = block.days.map(day => WEEK[WEEK.indexOf(day) + shift]);
+    selectBlock(schedule.addBlock({ ...block, start, end: start + length, days: days.every(Boolean) ? days : [slot.day] }), { title: block.title });
+  };
+
+  // Notion Calendar's keys: Delete removes what's selected (a class asks first), Escape
+  // deselects, Cmd/Ctrl+Z undoes, +D duplicates, +C/+X/+V copy, cut and paste a block.
+  // Ignored while typing, so text fields keep their own undo and copy.
   useEffect(() => {
     if (readOnly) return;
     const onKey = (event) => {
-      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
-      if (details || confirmRemove) return;
-      if (editing) {
+      if (details || confirmRemove || ghostMenu) return;
+      const mod = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      const block = editing && blocks.find(b => b.id === editing.id);
+
+      if (mod && key === 'z' && !event.shiftKey) {
         event.preventDefault();
-        schedule.removeBlock(editing.id);
         setEditing(null);
-      } else if (activeId) {
+        schedule.undo();
+      } else if (key === 'delete' || key === 'backspace') {
+        if (block) {
+          event.preventDefault();
+          deleteBlock(block.id);
+        } else if (activeId) {
+          event.preventDefault();
+          setConfirmRemove(activeId);
+        }
+      } else if (key === 'escape' && !editing && activeId) {
+        setActiveId(null);
+      } else if (mod && key === 'd' && block) {
         event.preventDefault();
-        setConfirmRemove(activeId);
+        duplicateBlock(block.id);
+      } else if (mod && (key === 'c' || key === 'x') && block && !window.getSelection()?.toString()) {
+        event.preventDefault();
+        const { id: _, ...rest } = block;
+        clipboard.current = { ...rest, title: rest.title.trim() || 'Untitled' };
+        if (key === 'x') deleteBlock(block.id);
+      } else if (mod && key === 'v' && clipboard.current) {
+        event.preventDefault();
+        pasteBlock();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [readOnly, editing, activeId, details, confirmRemove, schedule.removeBlock]);
+  });
 
   // the image is the week as it is: no picker, hover or open course
   const saveImage = async () => {
@@ -353,6 +452,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
   const feedUrl = `${origin}/api/calendar.ics?s=${shareCode}`;
 
   const editingBlock = editing && blocks.find(b => b.id === editing.id);
+
   const totalCredits = courses.filter(schedule.isReady).reduce((sum, c) => [sum[0] + c.credits[0], sum[1] + c.credits[1]], [0, 0]);
   const usedWeekend = [...timedMeetings, ...blocks].some(e => e.days.some(d => !WEEKDAYS.includes(d)));
   const mobileDays = usedWeekend ? WEEK : WEEKDAYS;
@@ -511,6 +611,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
             days={isMobile && !capturing ? [mobileDay] : null}
             caption={capturing ? `${semester.name} schedule` : null}
             activeId={activeId}
+            selectedBlockId={editing?.id}
             hoveredCrns={hoveredCrns}
             readOnly={readOnly}
             onMeetingClick={(meeting) => setActiveId(meeting.detailId)}
@@ -518,7 +619,9 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
             onGhostHover={setHoveredCrns}
             onBlockCreate={createBlock}
             onBlockChange={schedule.updateBlock}
-            onBlockClick={(id, anchor) => setEditing({ id, anchor })}
+            onBlockDuplicate={duplicateBlock}
+            onBlockClick={openBlock}
+            onSlotHover={(slot) => { hoveredSlot.current = slot; }}
           />
           {unscheduled.length > 0 && (
             <p className='px-1 text-xs text-tertiary md:flex-none'>
@@ -527,7 +630,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
           )}
           {!readOnly && (
             <p className='px-1 text-xs text-tertiary md:flex-none'>
-              Tip: drag on empty space to block off time for work, clubs or the gym. Select a block or class and press Delete to remove it.
+              Tip: drag on empty space to block off time for work, clubs or the gym, and give it a name to keep it. {isMac ? 'Option' : 'Alt'}-drag a block to copy it, Delete removes what's selected, and {isMac ? '⌘' : 'Ctrl+'}Z undoes.
             </p>
           )}
         </main>
@@ -540,9 +643,9 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
           anchor={editing.anchor}
           readOnly={readOnly}
           isNew={Boolean(editing.isNew)}
-          onChange={(changes) => schedule.updateBlock(editingBlock.id, changes)}
-          onDelete={() => { schedule.removeBlock(editingBlock.id); setEditing(null); }}
-          onClose={() => setEditing(null)}
+          onChange={(changes) => schedule.updateBlock(editingBlock.id, changes, { record: !('title' in changes) })}
+          onDelete={() => deleteBlock(editingBlock.id)}
+          onClose={closeEditor}
         />
       )}
 

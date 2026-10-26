@@ -62,6 +62,24 @@ export const useSchedule = (semester, { shared = null } = {}) => {
   const [termData, setTermData] = useState({ dates: null, exams: {} });
   const legacyPicks = useRef(picks === null && !shared ? load(key('selectedLectures'), []) : null);
 
+  // Undo, like Notion Calendar's Cmd+Z: each change pushes the plan as it was before.
+  // `tag` marks the entry a new block made, so discarding that draft drops it too.
+  const latest = useRef({});
+  latest.current = { courses, picks, blocks };
+  const history = useRef([]);
+  const record = (tag = null) => {
+    if (readOnly) return;
+    history.current = [...history.current.slice(-49), { ...latest.current, tag }];
+  };
+  const undo = useCallback(() => {
+    const previous = history.current.pop();
+    if (!previous) return false;
+    setCourses(previous.courses);
+    setPicks(previous.picks);
+    setBlocks(previous.blocks);
+    return true;
+  }, []);
+
   // fill in courses saved or shared without their full data
   useEffect(() => {
     const controller = new AbortController();
@@ -115,7 +133,8 @@ export const useSchedule = (semester, { shared = null } = {}) => {
   }, [picks]);
   useEffect(() => {
     if (readOnly) return;
-    save(key('scheduleBlocks'), blocks);
+    // a block is only kept once it has a name; an untitled one is a draft
+    save(key('scheduleBlocks'), blocks.filter(b => b.title?.trim()));
   }, [blocks]);
 
   // every chosen meeting with its course, ready for the calendar and the exports
@@ -150,11 +169,13 @@ export const useSchedule = (semester, { shared = null } = {}) => {
     setCourses(previous => previous.some(c => c.detailId === full.detailId)
       ? previous : [...previous, { ...full, colorIndex: nextColor(usedColors()) }]);
     const first = defaultPick(sections, [...meetings.filter(m => m.timed), ...blocks]);
+    record();
     setPicks(previous => ({ ...previous, [full.detailId]: first == null ? [] : pickOnlyChoices([first], sections) }));
     setActiveId(full.detailId);
   }, [courses, blocks, meetings, semester.code]);
 
   const removeCourse = useCallback((detailId) => {
+    record();
     setCourses(previous => previous.filter(c => c.detailId !== detailId));
     setPicks(previous => {
       const { [detailId]: _, ...rest } = previous ?? {};
@@ -164,21 +185,42 @@ export const useSchedule = (semester, { shared = null } = {}) => {
   }, []);
 
   const pickSection = useCallback((detailId, crn) => {
+    record();
     setPicks(previous => ({ ...previous, [detailId]: choose(previous?.[detailId], options[detailId], crn) }));
   }, [options]);
 
   const unpickSection = useCallback((detailId, crn) => {
+    record();
     setPicks(previous => ({ ...previous, [detailId]: (previous?.[detailId] ?? []).filter(c => c !== crn) }));
   }, []);
 
   const addBlock = useCallback((block) => {
-    const created = { id: newId(), title: '', colorIndex: nextColor(usedColors()), ...block };
+    const created = { title: '', colorIndex: nextColor(usedColors()), ...block, id: newId() };
+    record(created.id);
     setBlocks(previous => [...previous, created]);
     return created.id;
   }, [courses, blocks]);
-  const updateBlock = useCallback((id, changes) =>
-    setBlocks(previous => previous.map(b => (b.id === id ? { ...b, ...changes } : b))), []);
-  const removeBlock = useCallback((id) => setBlocks(previous => previous.filter(b => b.id !== id)), []);
+  // typing a name isn't recorded keystroke by keystroke ({ record: false })
+  const updateBlock = useCallback((id, changes, { record: shouldRecord = true } = {}) => {
+    if (shouldRecord) record();
+    setBlocks(previous => previous.map(b => (b.id === id ? { ...b, ...changes } : b)));
+  }, []);
+  const removeBlock = useCallback((id) => {
+    record();
+    setBlocks(previous => previous.filter(b => b.id !== id));
+  }, []);
+  // a rename is typed without recording each keystroke, so it's recorded once, as the
+  // plan was under the old name, when the editor closes
+  const recordRename = useCallback((id, previousTitle) => {
+    if (readOnly) return;
+    const before = { ...latest.current, blocks: latest.current.blocks.map(b => (b.id === id ? { ...b, title: previousTitle } : b)) };
+    history.current = [...history.current.slice(-49), { ...before, tag: null }];
+  }, []);
+  // a draft closed without a name goes as if it was never made, undo entry and all
+  const discardBlock = useCallback((id) => {
+    history.current = history.current.filter(entry => entry.tag !== id);
+    setBlocks(previous => previous.filter(b => b.id !== id));
+  }, []);
 
   const exams = useMemo(() => courses.filter(hasFullCourseData).flatMap(course => {
     return examsFor(termData.exams?.[courseName(course)] ?? [], picks?.[course.detailId] ?? [])
@@ -194,13 +236,13 @@ export const useSchedule = (semester, { shared = null } = {}) => {
       colorIndex: course.colorIndex,
       crns: picks?.[course.detailId] ?? [],
     })),
-    blocks,
+    blocks: blocks.filter(b => b.title?.trim()),
   }), [semester.code, courses, picks, blocks]);
 
   return {
     courses, options, picks: picks ?? {}, blocks, meetings, exams, dates: termData.dates,
     activeId, setActiveId, readOnly, snapshot,
-    addCourse, removeCourse, pickSection, unpickSection, addBlock, updateBlock, removeBlock,
+    addCourse, removeCourse, pickSection, unpickSection, addBlock, updateBlock, removeBlock, discardBlock, recordRename, undo,
     isReady: hasFullCourseData,
   };
 };

@@ -80,9 +80,9 @@ const EventCard = ({ item, dates, dimmed, highlighted, onPointerDown, onClick, o
 // Notion-style week view. Meetings and blocks are {days, start, end} in minutes.
 const WeekCalendar = forwardRef(({
   meetings = [], blocks = [], ghosts = [], dates = null, days: onlyDays = null,
-  activeId = null, hoveredCrns = null, readOnly = false, caption = null, className = '',
+  activeId = null, selectedBlockId = null, hoveredCrns = null, readOnly = false, caption = null, className = '',
   onMeetingClick, onGhostClick, onGhostHover,
-  onBlockCreate, onBlockChange, onBlockClick,
+  onBlockCreate, onBlockChange, onBlockDuplicate, onBlockClick, onSlotHover,
 }, ref) => {
   const columnsRef = useRef(null);
   const [drag, setDrag] = useState(null);
@@ -130,9 +130,13 @@ const WeekCalendar = forwardRef(({
   }, [hours.length]);
   const toY = (minutes) => ((minutes - startHour * 60) / 60) * HOUR;
 
-  // the block being dragged shows where it will land
+  // the block being dragged shows where it will land; with Option/Alt held it's a copy
+  // that moves and the original stays put
   const shownBlocks = useMemo(() => {
     if (!drag || drag.mode === 'create') return blocks;
+    if (drag.copy) {
+      return drag.moved ? [...blocks, { ...drag.block, ...drag.preview, id: `${drag.id}-copy` }] : blocks;
+    }
     return blocks.map(b => (b.id === drag.id ? { ...b, ...drag.preview } : b));
   }, [blocks, drag]);
 
@@ -189,6 +193,8 @@ const WeekCalendar = forwardRef(({
         onBlockCreate?.(current.moved && to - from >= SNAP
           ? { days: days.slice(a, b + 1), start: from, end: to }
           : { days: [days[current.startDay]], start: current.startMinutes, end: Math.min(current.startMinutes + 60, endHour * 60) });
+      } else if (current.moved && current.copy) {
+        onBlockDuplicate?.(current.id, current.preview);
       } else if (current.moved) {
         onBlockChange?.(current.id, current.preview);
       } else {
@@ -201,7 +207,7 @@ const WeekCalendar = forwardRef(({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [drag !== null, pointerToSlot, onBlockCreate, onBlockChange, onBlockClick]);
+  }, [drag !== null, pointerToSlot, onBlockCreate, onBlockChange, onBlockDuplicate, onBlockClick]);
 
   const startCreate = (event) => {
     if (readOnly || event.button !== 0 || event.target.closest('[data-event]')) return;
@@ -221,6 +227,7 @@ const WeekCalendar = forwardRef(({
     const { dayIndex, minutes } = pointerToSlot(event);
     updateDrag({
       mode, id: block.id, block, x: event.clientX, y: event.clientY, dayIndex, minutes,
+      copy: mode === 'move' && event.altKey,
       element: event.currentTarget.closest('[data-event]'), preview: {},
     });
   };
@@ -289,6 +296,11 @@ const WeekCalendar = forwardRef(({
             backgroundImage: `repeating-linear-gradient(to bottom, rgb(var(--background-secondary-color)) 0 1px, transparent 1px ${HOUR}px)`,
           }}
           onPointerDown={startCreate}
+          onPointerMove={onSlotHover ? (event) => {
+            const { dayIndex, minutes } = pointerToSlot(event);
+            onSlotHover({ day: days[dayIndex], minutes });
+          } : undefined}
+          onPointerLeave={onSlotHover ? () => onSlotHover(null) : undefined}
         >
           {days.map((day, dayIndex) => (
             <div key={day} className='flex-1 relative border-l border-[rgb(var(--background-secondary-color))]'>
@@ -303,7 +315,7 @@ const WeekCalendar = forwardRef(({
                     key={`${item.kind}-${item.id}-${day}`}
                     item={item}
                     dates={dates}
-                    highlighted={highlighted || drag?.id === item.id}
+                    highlighted={highlighted || (isBlock && (item.id === selectedBlockId || (drag && item.id === (drag.copy ? `${drag.id}-copy` : drag.id))))}
                     dimmed={Boolean(activeId) && item.kind === 'class' && item.detailId !== activeId}
                     resizable={isBlock && !readOnly}
                     onResizeStart={isBlock ? startBlockDrag(item, 'resize') : undefined}
