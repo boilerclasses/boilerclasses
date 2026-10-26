@@ -189,10 +189,8 @@ const WeekCalendar = forwardRef(({
         const from = Math.min(current.startMinutes, current.minutes);
         const to = Math.max(current.startMinutes, current.minutes);
         const [a, b] = [current.startDay, current.moved ? current.dayIndex : current.startDay].sort((x, y) => x - y);
-        // a click without dragging makes an hour-long block
-        onBlockCreate?.(current.moved && to - from >= SNAP
-          ? { days: days.slice(a, b + 1), start: from, end: to }
-          : { days: [days[current.startDay]], start: current.startMinutes, end: Math.min(current.startMinutes + 60, endHour * 60) });
+        // only a drag makes a block; a plain click on empty space does nothing
+        if (current.moved && to - from >= SNAP) onBlockCreate?.({ days: days.slice(a, b + 1), start: from, end: to });
       } else if (current.moved && current.copy) {
         onBlockDuplicate?.(current.id, current.preview);
       } else if (current.moved) {
