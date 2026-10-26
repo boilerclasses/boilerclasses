@@ -45,14 +45,28 @@ const Schedule = () => {
   const [pendingCourse, setPendingCourse] = useState(null);
 
   useEffect(() => {
-    const newest = SCHEDULE_SEMESTERS[SCHEDULE_SEMESTERS.length - 1];
-    const plan = decodeSchedule(new URLSearchParams(window.location.search).get('s') ?? '');
-    const sharedTerm = plan && SCHEDULE_SEMESTERS.find(option => option.code === plan.term);
-    if (sharedTerm) {
-      setShared(plan);
-      setSemester(sharedTerm);
+    const code = new URLSearchParams(window.location.search).get('s');
+    if (code && decodeSchedule(code)) {
+      // the link holds CRNs; the server looks up which courses they belong to
+      fetch(`/api/shared-plan?s=${encodeURIComponent(code)}`)
+        .then(response => (response.ok ? response.json() : null))
+        .catch(() => null)
+        .then(plan => {
+          const sharedTerm = plan && SCHEDULE_SEMESTERS.find(option => option.code === plan.term);
+          if (sharedTerm) {
+            setShared(plan);
+            setSemester(sharedTerm);
+          } else {
+            openSaved();
+          }
+        });
       return;
     }
+    openSaved();
+  }, []);
+
+  const openSaved = () => {
+    const newest = SCHEDULE_SEMESTERS[SCHEDULE_SEMESTERS.length - 1];
     let saved = null;
     try {
       migrateScheduleStorage();
@@ -62,7 +76,7 @@ const Schedule = () => {
     }
     // defaults to the newest term, which is what most people are planning for
     setSemester(SCHEDULE_SEMESTERS.find(option => option.code === saved) ?? newest);
-  }, []);
+  };
 
   useEffect(() => {
     if (!semester || shared) return;

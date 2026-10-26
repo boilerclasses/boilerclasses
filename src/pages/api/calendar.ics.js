@@ -1,6 +1,6 @@
 import terms from '@/data/terms.json';
 import { termCode } from '@/lib/terms';
-import { decodeSchedule } from '@/lib/scheduleShare';
+import { resolveSharedPlan } from '@/lib/sharedPlan';
 import { getAllSections } from '@/lib/sectionsStore';
 import { getTermData } from '@/lib/termDataStore';
 import { courseExamRows, examsFor } from '@/lib/termData';
@@ -12,7 +12,7 @@ import { buildCalendar } from '@/lib/ics';
 // publishes them. The plan itself lives in the link and never changes.
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
-  const plan = decodeSchedule(req.query.s ?? '');
+  const plan = await resolveSharedPlan(req.query.s ?? '');
   const termName = plan && terms.all.find(name => termCode(name) === plan.term);
   if (!termName) return res.status(400).send('Not a BoilerClasses schedule link');
 
