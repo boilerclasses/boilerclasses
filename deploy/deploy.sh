@@ -34,7 +34,8 @@ new_port=${ports[0]}
 new="boilerclasses-$new_port"
 
 # the live container keeps serving through the build and the new one's startup
-docker build -t "$image" .
+# NEXT_PUBLIC_SENTRY_DSN comes from the workflow's environment
+docker build --build-arg NEXT_PUBLIC_SENTRY_DSN -t "$image" .
 docker rm -f "$new" > /dev/null 2>&1 || true
 # the volume keeps the course embedding cache across deploys
 docker run -d --name "$new" --restart unless-stopped -p "127.0.0.1:$new_port:3000" \
