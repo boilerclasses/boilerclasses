@@ -24,6 +24,26 @@ async function connect() {
   }
 }
 
+// Plain key-value cache in the same Redis; misses and Redis errors both return null.
+export async function cacheGet(key) {
+  try {
+    await connect();
+    const value = await client.get(key);
+    return value === null ? null : JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+export async function cacheSet(key, value, seconds) {
+  try {
+    await connect();
+    await client.set(key, JSON.stringify(value), { EX: seconds });
+  } catch {
+    // a failed write only means the next request asks the source again
+  }
+}
+
 function filterQuery(sub, term, gen, cmin, cmax, levels, sched, gpa) {
   const formattedLevels = levels.map(level => `@courseCode:[${parseInt(level)*100}, ${parseInt(level)*100 + 9999}]`)
   return `${sub[0].length > 0 ? ` @subjectCode:{${sub.join("|")}}` : ""}${term[0].length > 0 ? ` @terms:{${term.join("|")}}` : ""}${gen[0].length > 0 ? gen.map((g) => ` @gened:{${g}}`) : ""} (@creditMin:[${cmin}, ${cmax}] | @creditMax:[${cmin}, ${cmax}])${levels[0].length > 0 ? ` (${formattedLevels.join(" | ")})` : " @courseCode:[0, 0]"}${sched[0].length > 0 ? ` @sched:{${sched.join("|")}}` : " @sched:{}"}${gpa ? ` @averageGpa:[${Number(gpa[0])}, ${Number(gpa[1])}]` : ""}`;
