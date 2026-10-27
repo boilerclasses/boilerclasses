@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 
 import {
@@ -10,6 +10,18 @@ import FeedbackModal from '@/components/feedbackModal';
 
 const Footer = () => {
     const { isOpen, onOpen, onClose } = useDisclosure();
+
+    // Links ending in #feedback (like the one in the README) open the feedback box on arrival
+    useEffect(() => {
+        if (window.location.hash === '#feedback') onOpen();
+    }, [onOpen]);
+
+    const closeFeedback = () => {
+        if (window.location.hash === '#feedback') {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        onClose();
+    };
 
     return (
         <div className='grid justify-center py-5 relative'>
@@ -38,7 +50,7 @@ const Footer = () => {
                 </span>
                 {/* Inspired by <a href='https://classes.wtf/' target='_blank' rel='noopener noreferrer' className='underline decoration-dashed decoration-1 underline-offset-2'>classes.wtf</a><br /> */}
             </h1>
-            <FeedbackModal isOpen={isOpen} onClose={onClose} />
+            <FeedbackModal isOpen={isOpen} onClose={closeFeedback} />
         </div>
     );
 };

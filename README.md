@@ -8,7 +8,7 @@ BoilerClasses is a simple [Next.js](https://nextjs.org/) app with a few Python h
 The app runs in a [Docker](https://www.docker.com/) container on a server run by [Boilerexams](https://boilerexams.com), behind [Cloudflare](https://www.cloudflare.com/). Every push to `main` is deployed by the **Deploy** GitHub Action (`.github/workflows/deploy.yml`) on a self-hosted runner on that server. It builds the new image while the old container keeps serving, swaps them, and rolls back if the new one fails its health check. Steps to run the same container locally are below.
 
 # Contributing
-All contributions are very, very welcome! If you find a *bug* or have any *feedback*, open an [issue](https://github.com/boilerclasses/boilerclasses/issues) or a [PR](https://github.com/boilerclasses/boilerclasses/pulls), or use our [feedback form](https://docs.google.com/forms/d/e/1FAIpQLScoE5E-G7dbr7-v9dY5S7UeIoojjMTjP_XstLz38GBpib5MPA/viewform). BoilerClasses is maintained by the [Boilerexams](https://boilerexams.com) team. If you'd like to work on it (and Boilerexams) with us regularly, [apply to join the team](https://boilerexams.com/apply)!
+All contributions are very, very welcome! If you find a *bug* or have any *feedback*, open an [issue](https://github.com/boilerclasses/boilerclasses/issues) or a [PR](https://github.com/boilerclasses/boilerclasses/pulls), or use our [feedback form](https://boilerclasses.com/#feedback). BoilerClasses is maintained by the [Boilerexams](https://boilerexams.com) team. If you'd like to work on it (and Boilerexams) with us regularly, [apply to join the team](https://boilerexams.com/apply)!
 
 # Setup
 You can clone this repository and run a local instance of the app in two ways (with or without Docker):
