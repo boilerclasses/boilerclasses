@@ -40,3 +40,15 @@ jobs:
           FORCE: ${{ inputs.force }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ vars.SENTRY_DSN }}
         run: deploy/deploy.sh
+
+      # Cloudflare keeps a copy of every page (a cache rule in the dashboard). Those
+      # copies point at the old build's scripts, so they're cleared once the new build is live.
+      - name: Clear Cloudflare's cached pages
+        if: vars.CLOUDFLARE_ZONE_ID != ''
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_CACHE_PURGE_TOKEN }}
+          ZONE: ${{ vars.CLOUDFLARE_ZONE_ID }}
+        run: |
+          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/purge_cache" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}' > /dev/null
