@@ -15,6 +15,8 @@ async function handler(req, res) {
       const name = req.query.name;
       const id = req.query.id;
       const prof = await ratings.searchTeacher(name, id);
+      // the server caches RMP for a week (src/lib/ratings.js); browsers can keep it a day
+      res.setHeader('Cache-Control', 'public, max-age=86400');
       res.status(200).json({ prof });
     }
   
