@@ -1,16 +1,22 @@
 // Keep the wrapper's existing queries and response shapes, but avoid its old
 // node-fetch gzip reader, which failed in production with ERR_STREAM_PREMATURE_CLOSE.
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import fs from 'fs/promises';
+import path from 'path';
 import {
   searchTeacherQuery,
   getTeacherQuery,
 } from '@mtucourses/rate-my-professors/dist/src/queries';
 import { AUTH_TOKEN } from '@mtucourses/rate-my-professors/dist/src/constants';
-import { cacheGet, cacheSet } from './redis';
 
 // Every course page looks up each of its instructors, so without a cache RMP sees
 // several requests per page view and starts answering HTTP 429. Ratings change slowly.
-const CACHE_SECONDS = 7 * 24 * 60 * 60;
+const FOUND_SECONDS = 7 * 24 * 60 * 60;
+// RMP can add a missing professor any day, so a lookup with no match is asked again sooner.
+const MISSING_SECONDS = 24 * 60 * 60;
+// On disk instead of the container's Redis, which starts empty on every deploy.
+// deploy/deploy.sh mounts a Docker volume here and server/script.sh drops expired answers.
+const CACHE_DIR = path.join(process.cwd(), 'server', 'rmp_cache');
 // Identical lookups that arrive together (a popular page right after a deploy) share one request.
 const inFlight = new Map();
 
@@ -32,28 +38,55 @@ async function fetchRMP(query, variables) {
   return data;
 }
 
+// Missing, expired and unreadable entries all count as a miss.
+async function cacheGet(key) {
+  try {
+    const { expires, data } = JSON.parse(await fs.readFile(path.join(CACHE_DIR, key), 'utf8'));
+    return expires > Date.now() ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function cacheSet(key, data, seconds) {
+  const file = path.join(CACHE_DIR, key);
+  // During a deploy two containers share the folder, so write a temporary file and
+  // rename it into place; a reader never sees half an entry.
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    await fs.mkdir(CACHE_DIR, { recursive: true });
+    await fs.writeFile(temporary, JSON.stringify({ expires: Date.now() + seconds * 1000, data }));
+    await fs.rename(temporary, file);
+  } catch {
+    // a failed write only means the next request asks RMP again
+    await fs.rm(temporary, { force: true }).catch(() => {});
+  }
+}
+
 // Only successful answers are cached, so a 429 is retried on the next request.
-async function request(query, variables) {
-  const key = 'rmp:' + createHash('sha1').update(JSON.stringify([query, variables])).digest('hex');
+async function request(query, variables, found) {
+  const key = createHash('sha1').update(JSON.stringify([query, variables])).digest('hex');
   if (inFlight.has(key)) return inFlight.get(key);
   const pending = (async () => {
     const cached = await cacheGet(key);
     if (cached) return cached;
     const data = await fetchRMP(query, variables);
-    await cacheSet(key, data, CACHE_SECONDS);
+    await cacheSet(key, data, found(data) ? FOUND_SECONDS : MISSING_SECONDS);
     return data;
   })().finally(() => inFlight.delete(key));
   inFlight.set(key, pending);
   return pending;
 }
 
+const teachers = data => data.newSearch.teachers?.edges.map(edge => edge.node) || [];
+
 export default {
   async searchTeacher(text, schoolID) {
-    const data = await request(searchTeacherQuery, { text, schoolID });
-    return data.newSearch.teachers?.edges.map(edge => edge.node) || [];
+    const data = await request(searchTeacherQuery, { text, schoolID }, data => teachers(data).length > 0);
+    return teachers(data);
   },
   async getTeacher(id) {
-    const data = await request(getTeacherQuery, { id });
+    const data = await request(getTeacherQuery, { id }, data => Boolean(data.node));
     return data.node;
   },
 };

@@ -13,5 +13,7 @@ EMBEDDING_THREADS=1 python3 semantic_api.py &
 EMBEDDING_THREADS=2 nice -n 10 python3 embed.py &
 # Browser search index; builds in the background so the site isn't held up.
 node build_search_index.mjs &
+# RateMyProfessors answers on the cache volume expire within a week (src/lib/ratings.js)
+find rmp_cache -type f -mtime +7 -delete 2>/dev/null || true
 cd ..
 npm run start

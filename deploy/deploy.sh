@@ -37,9 +37,10 @@ new="boilerclasses-$new_port"
 # NEXT_PUBLIC_SENTRY_DSN comes from the workflow's environment
 docker build --build-arg NEXT_PUBLIC_SENTRY_DSN -t "$image" .
 docker rm -f "$new" > /dev/null 2>&1 || true
-# the volume keeps the course embedding cache across deploys
+# the volumes keep the course embedding cache and the RateMyProfessors cache across deploys
 docker run -d --name "$new" --restart unless-stopped -p "127.0.0.1:$new_port:3000" \
-  -v boilerclasses-embeddings:/home/server/embedding_cache "$image" > /dev/null
+  -v boilerclasses-embeddings:/home/server/embedding_cache \
+  -v boilerclasses-rmp:/home/server/rmp_cache "$image" > /dev/null
 
 fetch() {
   local path=$1
