@@ -24,6 +24,9 @@ RUN npm ci
 
 # Source code last: only the steps below re-run on a normal code change.
 COPY . .
+# Sentry's DSN is public (it ships in the browser bundle); empty turns Sentry off
+ARG NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 RUN npm run build
 WORKDIR /home/server
 
