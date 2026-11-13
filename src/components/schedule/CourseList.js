@@ -2,6 +2,7 @@ import React from 'react';
 import { Spinner } from '@chakra-ui/react';
 import { IoIosArrowDown, IoIosClose, IoMdInformationCircleOutline } from 'react-icons/io';
 import { courseName, eventColor, formatTime, missingTypes, shortType } from '@/lib/schedule';
+import ClassGpa from './ClassGpa';
 
 const credits = ({ credits: [min, max] }) => (min === max ? `${min} cr` : `${min}–${max} cr`);
 
@@ -48,9 +49,10 @@ const CourseList = ({ courses, options, picks, activeId, readOnly, onSelect, onR
             >
               <span className='mt-1 h-2.5 w-2.5 shrink-0 rounded-full' style={{ background: color }} />
               <div className='min-w-0 flex-1'>
-                <div className='flex items-baseline gap-2'>
+                <div className='flex items-center gap-2'>
                   <span className='font-semibold text-sm text-primary'>{isReady(course) ? courseName(course) : '…'}</span>
                   {isReady(course) && <span className='text-[11px] text-tertiary'>{credits(course)}</span>}
+                  {isReady(course) && <ClassGpa overallGpa={course.overallGpa} />}
                 </div>
                 <div className='text-xs text-secondary truncate'>{course.title}</div>
                 <div className='mt-1 text-[11px]'>

@@ -31,13 +31,11 @@ import Footer from '@/components/footer';
 
 const inter = Inter({ subsets: ['latin'] });
 
-const SEMESTER_STORAGE_KEY = 'scheduleSemester';
-
 const Schedule = () => {
   const searchFilters = useSearchFilters({ view: 'card' });
 
-  // null until mounted: the page is prerendered without localStorage, so the saved term
-  // (and every per-term planner initializer) is only read on the client
+  // null until mounted: the page is prerendered without localStorage, so every per-term
+  // planner initializer only runs on the client
   const [semester, setSemester] = useState(null);
   // a schedule opened from a share link (?s=...), shown read-only until copied or dismissed
   const [shared, setShared] = useState(null);
@@ -57,35 +55,24 @@ const Schedule = () => {
             setShared(plan);
             setSemester(sharedTerm);
           } else {
-            openSaved();
+            openNewest();
           }
         });
       return;
     }
-    openSaved();
+    openNewest();
   }, []);
 
-  const openSaved = () => {
-    const newest = SCHEDULE_SEMESTERS[SCHEDULE_SEMESTERS.length - 1];
-    let saved = null;
+  // Opens on the newest term, the one students are registering for. A switch to the other
+  // term lasts for the visit only: a remembered term kept people on Fall after Spring opened.
+  const openNewest = () => {
     try {
       migrateScheduleStorage();
-      saved = localStorage.getItem(SEMESTER_STORAGE_KEY);
     } catch (error) {
-      console.error('Error loading schedule semester:', error);
+      console.error('Error migrating schedule storage:', error);
     }
-    // defaults to the newest term, which is what most people are planning for
-    setSemester(SCHEDULE_SEMESTERS.find(option => option.code === saved) ?? newest);
+    setSemester(SCHEDULE_SEMESTERS[SCHEDULE_SEMESTERS.length - 1]);
   };
-
-  useEffect(() => {
-    if (!semester || shared) return;
-    try {
-      localStorage.setItem(SEMESTER_STORAGE_KEY, semester.code);
-    } catch (error) {
-      console.error('Error saving schedule semester:', error);
-    }
-  }, [semester, shared]);
 
   // leave a shared schedule for your own plan, optionally saving the shared one as it
   const leaveShared = (copyIt) => {
@@ -96,16 +83,12 @@ const Schedule = () => {
       localStorage.setItem(key('pinnedCourses'), JSON.stringify(shared.courses.map(({ detailId, colorIndex, name }) => ({ detailId, colorIndex, name }))));
       localStorage.setItem(key('sectionPicks'), JSON.stringify(Object.fromEntries(shared.courses.map(c => [c.detailId, c.crns]))));
       localStorage.setItem(key('scheduleBlocks'), JSON.stringify(shared.blocks.map(({ id, ...block }) => ({ ...block, id: Math.random().toString(36).slice(2, 10) }))));
-      localStorage.setItem(SEMESTER_STORAGE_KEY, shared.term);
     }
     const url = new URL(window.location.href);
     url.searchParams.delete('s');
     window.history.replaceState(null, '', url);
+    // either way the planner stays on the shared plan's term, now showing your own plan
     setShared(null);
-    if (!copyIt) {
-      const saved = localStorage.getItem(SEMESTER_STORAGE_KEY);
-      setSemester(SCHEDULE_SEMESTERS.find(option => option.code === saved) ?? semester);
-    }
   };
 
   const description = 'BoilerClasses Scheduling Assistant - Plan your next courses from over 13000 Purdue University courses. Find geneds, grades, prerequisites, schedules, and more.';

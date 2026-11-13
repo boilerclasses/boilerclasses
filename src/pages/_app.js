@@ -9,6 +9,7 @@ import Script from 'next/script';
 
 import Footer from '@/components/footer';
 import Banner from '@/components/banner';
+import WhatsNew from '@/components/WhatsNew';
 import dynamic from 'next/dynamic'
 import { RouteHistoryProvider } from '@/hooks/useRouteHistory';
 
@@ -62,6 +63,7 @@ export default function App({ Component, pageProps }) {
         </Head>
 
         <Banner />
+        <WhatsNew />
         <Component {...pageProps} />
 
         {/* <Footer /> */}

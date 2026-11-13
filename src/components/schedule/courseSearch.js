@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { offering } from '@/lib/terms';
+import ClassGpa from './ClassGpa';
 
 const CourseSearch = ({ courses, semester, onSelect, searchTerm, updateFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -121,8 +122,9 @@ const CourseSearch = ({ courses, semester, onSelect, searchTerm, updateFilter })
                     }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className={`font-medium ${availability.offered ? '' : 'text-secondary'}`}>
+                    <div className={`flex items-center gap-2 font-medium ${availability.offered ? '' : 'text-secondary'}`}>
                       {course.value.subjectCode} {course.value.courseCode}
+                      <ClassGpa overallGpa={course.value.overallGpa} />
                     </div>
                     <div className="text-sm text-tertiary truncate">
                       {course.value.title}
