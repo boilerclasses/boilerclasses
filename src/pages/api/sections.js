@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises';
 import path from 'path';
+import { setCacheHeaders } from '@/lib/cache';
 import { CURRENT_SEMESTER_CODE } from '@/lib/terms';
 
 // Schedule terms' sections ({termCode: {detailId: sections}}), downloaded at build by
@@ -26,6 +27,8 @@ async function getAllSections() {
 export default async function handler(req, res) {
   if (req.method === 'GET') {
     const all = await getAllSections();
+    // Sections come from the snapshot baked into this build.
+    if (all) setCacheHeaders(req, res);
     const term = String(req.query.term ?? CURRENT_SEMESTER_CODE);
     res.status(200).json({ sections: all?.[term]?.[String(req.query.detailId)] ?? null });
   }

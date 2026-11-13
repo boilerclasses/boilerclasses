@@ -15,6 +15,8 @@ async function handler(req, res) {
       const name = req.query.name;
       const id = req.query.id;
       const prof = await ratings.searchTeacher(name, id);
+      // RMP scores move slowly; a day at Cloudflare and an hour in the browser is fresh enough.
+      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       res.status(200).json({ prof });
     }
   
