@@ -16,6 +16,7 @@ import { useEffect, useState, useMemo } from 'react';
 
 // ----- Component imports -----
 import { semesters, sanitizeDescription } from "@/lib/utils";
+import { getCourse } from "@/lib/redis";
 
 import Footer from '@/components/footer';
 import Calendar from '@/components/calendar';
@@ -56,7 +57,7 @@ const CardDetails = ({ courseData, semData }) => {
 
   if (loading) {
     return (
-      <div className='h-screen w-screen flex items-center justify-center'>
+      <div className='h-[calc(100vh-var(--banner-height,0px))] w-screen flex items-center justify-center'>
         <Spinner size="lg" color={`rgb(var(--text-color))`} />
       </div>
     );
@@ -109,18 +110,15 @@ const CardDetails = ({ courseData, semData }) => {
 export default CardDetails;
 
 
-// @Sarthak made this, some api call to get courseData data
-export async function getServerSideProps(context) {
-  const params = new URLSearchParams({ detailId: context.params.id });
-  // https://www.boilerclasses.com
-  const data = await fetch(`http://localhost:3000/api/get?${params}`);
-  const course = await data.json().then((res) => {
-    if (res["course"]["documents"].length > 0) {
-      return res["course"]["documents"][0].value;
-    } else {
-      return {};
-    }
-  });
+// Course data only changes with a deploy, so each page is rendered once on its
+// first visit and then served from Next's page cache until the next build.
+export async function getStaticPaths() {
+  return { paths: [], fallback: 'blocking' };
+}
+
+export async function getStaticProps(context) {
+  const res = await getCourse(context.params.id);
+  const course = res.documents.length > 0 ? res.documents[0].value : {};
   const availableSemesters = [];
   semesters.forEach((sem) => {
     try {
@@ -134,5 +132,7 @@ export async function getServerSideProps(context) {
       courseData: course,
       semData: availableSemesters.length > 0 ? availableSemesters[0] : ""
     },
+    // A missing course is checked again later instead of staying cached for the whole build.
+    revalidate: Object.keys(course).length > 0 ? false : 60,
   };
 }

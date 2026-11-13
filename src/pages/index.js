@@ -186,7 +186,7 @@ const CourseCatalog = () => {
       {!displayLanding ? (
         <div
           id="parent"
-          className={`flex flex-col h-screen min-h-screen bg-super container mx-auto p-4 ${inter.className}`}
+          className={`flex flex-col h-[calc(100vh-var(--banner-height,0px))] min-h-[calc(100vh-var(--banner-height,0px))] bg-super container mx-auto p-4 ${inter.className}`}
         >
           {/* Header */}
           <div className="flex flex-row my-2 md:my-4 lg:my-0 lg:mt-4 lg:mb-8">
@@ -264,7 +264,7 @@ const CourseCatalog = () => {
       ) : (
         /* Landing Page */
         <div>
-          <div className={`flex-col z-40 grid place-content-center mx-4 h-screen items-center justify-center`}>
+          <div className={`flex-col z-40 grid place-content-center mx-4 h-[calc(100vh-var(--banner-height,0px))] items-center justify-center`}>
             <div className="flex flex-row justify-around my-2 md:gap-4 md:my-4 lg:my-0 lg:mt-4 lg:mb-6">
               <img
                 src="/boilerclasses-FULL.png"

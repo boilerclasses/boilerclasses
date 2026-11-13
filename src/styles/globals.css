@@ -39,6 +39,17 @@
   --graph-color-21: 123, 31, 162;  /* #7B1FA2 - Purple */
   --graph-color-22: 255, 196, 0;   /* #FFC400 - Amber */
   --graph-color-23: 255, 224, 130; /* #FFE082 - Amber */
+  /* Schedule event accents (space-separated so they take an alpha: rgb(var(--event-1) / 0.2)) */
+  --event-1: 37 99 235;    /* blue-600 */
+  --event-2: 22 163 74;    /* green-600 */
+  --event-3: 234 88 12;    /* orange-600 */
+  --event-4: 147 51 234;   /* purple-600 */
+  --event-5: 219 39 119;   /* pink-600 */
+  --event-6: 13 148 136;   /* teal-600 */
+  --event-7: 202 138 4;    /* yellow-600 */
+  --event-8: 220 38 38;    /* red-600 */
+  --event-9: 79 70 229;    /* indigo-600 */
+  --event-10: 8 145 178;   /* cyan-600 */
 }
 
 .dark {
@@ -78,6 +89,17 @@
   --graph-color-21: 221, 160, 221; /* #DDA0DD - Plum */
   --graph-color-22: 255, 215, 0;   /* #FFD700 - Gold */
   --graph-color-23: 255, 235, 205; /* #FFEBCD - Blanched Almond */
+  /* Schedule event accents */
+  --event-1: 96 165 250;   /* blue-400 */
+  --event-2: 74 222 128;   /* green-400 */
+  --event-3: 251 146 60;   /* orange-400 */
+  --event-4: 192 132 252;  /* purple-400 */
+  --event-5: 244 114 182;  /* pink-400 */
+  --event-6: 45 212 191;   /* teal-400 */
+  --event-7: 250 204 21;   /* yellow-400 */
+  --event-8: 248 113 113;  /* red-400 */
+  --event-9: 129 140 248;  /* indigo-400 */
+  --event-10: 34 211 238;  /* cyan-400 */
 
 
 }
