@@ -17,7 +17,7 @@ import { convertTo12HourFormat } from '@/lib/timeUtils';
 import { EXAM_LABELS } from '@/lib/termData';
 import {
   WEEK, WEEKDAYS, candidates, choose, clashes, courseName, courseTypes, eventColor, formatRange,
-  isTimed, missingTypes, shortType, toClock, toMinutes,
+  isTimed, missingTypes, shortType, toClock, toMinutes, typeRank,
 } from '@/lib/schedule';
 import CourseSearch from '@/components/schedule/courseSearch';
 import WeekCalendar from '@/components/schedule/WeekCalendar';
@@ -188,8 +188,13 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
   const [mobileDay, setMobileDay] = useState(() => WEEKDAYS[(new Date().getDay() + 6) % 7] ?? 'Mon');
   const [capturing, setCapturing] = useState(false);
   const calendarRef = useRef(null);
-  const [isMac, setIsMac] = useState(false); // for shortcut names in the tip, set after hydrating
-  useEffect(() => setIsMac(/Mac|iPhone|iPad/.test(navigator.platform)), []);
+  // for the tip's wording (shortcut names, or taps on a touch screen), set after hydrating
+  const [isMac, setIsMac] = useState(false);
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    setIsMac(/Mac|iPhone|iPad/.test(navigator.platform));
+    setIsTouch(window.matchMedia('(pointer: coarse)').matches);
+  }, []);
 
   const activeCourse = courses.find(c => c.detailId === activeId) ?? null;
   const activeOptions = activeCourse && Array.isArray(options[activeId]) ? options[activeId] : [];
@@ -465,6 +470,19 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
   const shareUrl = `${origin}/schedule?s=${shareCode}`;
   const feedUrl = `${origin}/api/calendar.ics?s=${shareCode}`;
 
+  // each course's picked CRNs for registering, and the section types it still needs
+  const registration = courses.map(course => {
+    const courseOptions = Array.isArray(options[course.detailId]) ? options[course.detailId] : [];
+    const picked = picks[course.detailId] ?? [];
+    return {
+      name: courseName(course),
+      sections: picked
+        .map(crn => ({ crn, type: courseOptions.find(o => o.crn === crn)?.type ?? '' }))
+        .sort((a, b) => typeRank(a.type) - typeRank(b.type)),
+      missing: missingTypes(picked, courseOptions),
+    };
+  });
+
   const editingBlock = editing && blocks.find(b => b.id === editing.id);
 
   const totalCredits = courses.filter(schedule.isReady).reduce((sum, c) => [sum[0] + c.credits[0], sum[1] + c.credits[1]], [0, 0]);
@@ -505,6 +523,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
         <ExportMenu
           shareUrl={shareUrl}
           feedUrl={feedUrl}
+          registration={registration}
           termName={semester.name}
           hasBlocks={blocks.length > 0}
           disabled={!courses.length && !blocks.length}
@@ -558,6 +577,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
             renderPicker={(course, courseOptions) => (
               <SectionPicker
                 course={course}
+                term={semester.code}
                 options={courseOptions}
                 picked={picks[course.detailId] ?? []}
                 activeType={activeType ?? courseTypes(courseOptions)[0]}
@@ -644,7 +664,9 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
           )}
           {!readOnly && (
             <p className='px-1 text-xs text-tertiary md:flex-none'>
-              Tip: drag on empty space to block off time for work, clubs or the gym, and give it a name to keep it. {isMac ? 'Option' : 'Alt'}-drag a block to copy it, Delete removes what's selected, and {isMac ? '⌘' : 'Ctrl+'}Z undoes.
+              {isTouch
+                ? 'Tip: tap empty space to block off an hour for work, clubs or the gym, and give it a name to keep it. Drag its bottom edge to make it longer.'
+                : <>Tip: drag on empty space to block off time for work, clubs or the gym, and give it a name to keep it. {isMac ? 'Option' : 'Alt'}-drag a block to copy it, Delete removes what&apos;s selected, and {isMac ? '⌘' : 'Ctrl+'}Z undoes.</>}
             </p>
           )}
         </main>

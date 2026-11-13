@@ -3,7 +3,8 @@ import {
   Menu, MenuButton, MenuItem, MenuList, Modal, ModalBody, ModalCloseButton, ModalContent,
   ModalHeader, ModalOverlay, Spinner, useDisclosure, useToast,
 } from '@chakra-ui/react';
-import { IoMdCalendar, IoMdDownload, IoMdImage, IoMdLink, IoMdShare, IoMdDocument } from 'react-icons/io';
+import { IoMdCalendar, IoMdClipboard, IoMdCopy, IoMdDownload, IoMdImage, IoMdLink, IoMdShare, IoMdDocument } from 'react-icons/io';
+import { shortType } from '@/lib/schedule';
 
 const MENU_STYLE = { bg: 'rgb(var(--background-color))', borderColor: 'rgb(var(--background-secondary-color))' };
 const ITEM_STYLE = { bg: 'transparent', _hover: { bg: 'rgb(var(--background-secondary-color))' }, fontSize: 'sm' };
@@ -86,10 +87,65 @@ const CalendarDialog = ({ isOpen, onClose, feedUrl, termName, hasBlocks }) => {
   );
 };
 
-// Image, share link, calendar and PDF exports for the plan.
-const ExportMenu = ({ shareUrl, feedUrl, termName, hasBlocks, disabled, onImage, onPdf }) => {
+// The picked CRNs to enter when registering on MyPurdue, by course. Each one copies on
+// its own (registration takes them one box at a time), or all of them at once.
+const CrnDialog = ({ isOpen, onClose, termName, registration }) => {
+  const toast = useToast();
+  const all = registration.flatMap(course => course.sections.map(section => section.crn));
+  const copyCrns = async (text, title) => {
+    const copied = await copy(text);
+    toast({ title: copied ? title : 'Could not copy', status: copied ? 'success' : 'error', duration: 2000, position: 'top' });
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} isCentered size='md'>
+      <ModalOverlay bg='blackAlpha.500' />
+      <ModalContent bg='rgb(var(--background-color))' color='rgb(var(--text-color))'>
+        <ModalHeader fontSize='lg'>CRNs for {termName}</ModalHeader>
+        <ModalCloseButton />
+        <ModalBody pb={6} className='flex flex-col gap-4 text-sm'>
+          <p className='text-secondary'>Enter these on MyPurdue when you register. Tap a CRN to copy it.</p>
+          <ul className='flex flex-col gap-2'>
+            {registration.map(course => (
+              <li key={course.name} className='flex items-start gap-2'>
+                <span className='w-24 shrink-0 pt-1 font-semibold'>{course.name}</span>
+                {/* CRNs wrap within their own column, lined up under each other */}
+                <span className='flex flex-1 flex-wrap items-center gap-2'>
+                  {course.sections.map(({ crn, type }) => (
+                    <button
+                      key={crn}
+                      onClick={() => copyCrns(String(crn), `Copied ${crn}`)}
+                      className='flex items-baseline gap-1.5 rounded-lg bg-background-secondary px-2.5 py-1 hover:brightness-110 transition'
+                    >
+                      <span className='font-mono font-medium'>{crn}</span>
+                      {type && <span className='text-xs text-tertiary'>{shortType(type)}</span>}
+                    </button>
+                  ))}
+                  {course.missing.length > 0 && (
+                    <span className='text-xs text-red-500 font-medium'>Pick a {course.missing.map(t => shortType(t).toLowerCase()).join(' and ')}</span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => copyCrns(all.join(', '), `Copied ${all.length} CRN${all.length === 1 ? '' : 's'}`)}
+            disabled={!all.length}
+            className='flex items-center justify-center gap-1 rounded-lg bg-background-secondary px-3 py-2 text-xs font-medium hover:brightness-110 transition disabled:opacity-40'
+          >
+            <IoMdCopy /> Copy all CRNs
+          </button>
+        </ModalBody>
+      </ModalContent>
+    </Modal>
+  );
+};
+
+// Image, share link, CRN, calendar and PDF exports for the plan.
+const ExportMenu = ({ shareUrl, feedUrl, registration, termName, hasBlocks, disabled, onImage, onPdf }) => {
   const toast = useToast();
   const calendar = useDisclosure();
+  const crns = useDisclosure();
   const [busy, setBusy] = useState(false);
 
   const saveImage = async () => {
@@ -124,10 +180,12 @@ const ExportMenu = ({ shareUrl, feedUrl, termName, hasBlocks, disabled, onImage,
         <MenuList {...MENU_STYLE} color='rgb(var(--text-color))' zIndex={40} minW='220px'>
           <MenuItem {...ITEM_STYLE} icon={<IoMdImage />} onClick={saveImage}>Save as image</MenuItem>
           <MenuItem {...ITEM_STYLE} icon={<IoMdLink />} onClick={copyShare}>Copy share link</MenuItem>
+          <MenuItem {...ITEM_STYLE} icon={<IoMdClipboard />} onClick={crns.onOpen} isDisabled={!registration.length}>Copy CRNs…</MenuItem>
           <MenuItem {...ITEM_STYLE} icon={<IoMdCalendar />} onClick={calendar.onOpen}>Add to calendar app…</MenuItem>
           <MenuItem {...ITEM_STYLE} icon={<IoMdDocument />} onClick={onPdf}>Download PDF</MenuItem>
         </MenuList>
       </Menu>
+      <CrnDialog isOpen={crns.isOpen} onClose={crns.onClose} termName={termName} registration={registration} />
       <CalendarDialog
         isOpen={calendar.isOpen}
         onClose={calendar.onClose}

@@ -67,10 +67,11 @@ const EventCard = ({ item, dates, dimmed, highlighted, onPointerDown, onClick, o
           </>
         )}
       </div>
+      {/* the one place a finger drags instead of scrolling, taller where fingers are the pointer */}
       {resizable && (
         <div
           onPointerDown={onResizeStart}
-          className='absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize'
+          className='absolute bottom-0 left-0 right-0 h-2 [@media(pointer:coarse)]:h-4 cursor-ns-resize touch-none'
         />
       )}
     </div>
@@ -145,7 +146,7 @@ const WeekCalendar = forwardRef(({
     const dayIndex = Math.min(days.length - 1, Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * days.length)));
     const raw = startHour * 60 + ((event.clientY - rect.top) / HOUR) * 60;
     const minutes = Math.min(endHour * 60, Math.max(startHour * 60, Math.round(raw / SNAP) * SNAP));
-    return { dayIndex, minutes };
+    return { dayIndex, minutes, hour: Math.floor(raw / 60) };
   }, [days, startHour, endHour, HOUR]);
 
   // drag state lives in a ref so pointer handlers always see the latest, and mirrors to
@@ -189,8 +190,14 @@ const WeekCalendar = forwardRef(({
         const from = Math.min(current.startMinutes, current.minutes);
         const to = Math.max(current.startMinutes, current.minutes);
         const [a, b] = [current.startDay, current.moved ? current.dayIndex : current.startDay].sort((x, y) => x - y);
-        // only a drag makes a block; a plain click on empty space does nothing
-        if (current.moved && to - from >= SNAP) onBlockCreate?.({ days: days.slice(a, b + 1), start: from, end: to });
+        // with a mouse only a drag makes a block, and a plain click on empty space does nothing.
+        // A finger drag scrolls instead, so a tap makes an hour-long block in the tapped hour.
+        if (current.moved && to - from >= SNAP) {
+          onBlockCreate?.({ days: days.slice(a, b + 1), start: from, end: to });
+        } else if (current.touch && !current.moved) {
+          const start = Math.min(endHour - 1, Math.max(startHour, current.hour)) * 60;
+          onBlockCreate?.({ days: [days[current.startDay]], start, end: start + 60 });
+        }
       } else if (current.moved && current.copy) {
         onBlockDuplicate?.(current.id, current.preview);
       } else if (current.moved) {
@@ -199,19 +206,26 @@ const WeekCalendar = forwardRef(({
         onBlockClick?.(current.id, current.element);
       }
     };
+    // a touch that turns into a scroll is cancelled, so drop the drag without acting on it
+    const cancel = () => updateDrag(null);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
     return () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
     };
   }, [drag !== null, pointerToSlot, onBlockCreate, onBlockChange, onBlockDuplicate, onBlockClick]);
 
   const startCreate = (event) => {
     if (readOnly || event.button !== 0 || event.target.closest('[data-event]')) return;
     event.preventDefault();
-    const { dayIndex, minutes } = pointerToSlot(event);
-    updateDrag({ mode: 'create', x: event.clientX, y: event.clientY, startDay: dayIndex, dayIndex, startMinutes: minutes, minutes });
+    const { dayIndex, minutes, hour } = pointerToSlot(event);
+    updateDrag({
+      mode: 'create', x: event.clientX, y: event.clientY, startDay: dayIndex, dayIndex, startMinutes: minutes, minutes,
+      hour, touch: event.pointerType === 'touch',
+    });
   };
 
   const startBlockDrag = (block, mode) => (event) => {
@@ -285,10 +299,10 @@ const WeekCalendar = forwardRef(({
           ))}
         </div>
 
-        {/* day columns */}
+        {/* day columns: fingers scroll through them (a mouse still drags out blocks) */}
         <div
           ref={columnsRef}
-          className={`flex flex-1 relative ${readOnly ? '' : 'cursor-crosshair'} touch-none`}
+          className={`flex flex-1 relative ${readOnly ? '' : 'cursor-crosshair'} touch-manipulation`}
           style={{
             height: hours.length * HOUR,
             backgroundImage: `repeating-linear-gradient(to bottom, rgb(var(--background-secondary-color)) 0 1px, transparent 1px ${HOUR}px)`,

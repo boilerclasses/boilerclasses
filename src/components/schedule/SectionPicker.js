@@ -3,15 +3,20 @@ import { IoMdCheckmarkCircle, IoIosWarning } from 'react-icons/io';
 import { loadRatingsForProfs, getRMPScore } from '@/components/RMP';
 import { calculateGradesAndGPA, collectAllProfessors, getColor } from '@/lib/gpaUtils';
 import { isIndianapolisRoom } from './utils/indianapolisUtils';
-import { candidates, courseTypes, eventColor, formatRange, isLinked, missingTypes, pickedClassId, requiredTypes, shortType, typeRank } from '@/lib/schedule';
+import { candidates, courseName, courseTypes, eventColor, formatRange, isLinked, missingTypes, pickedClassId, requiredTypes, shortType, typeRank } from '@/lib/schedule';
 
 const rmpCache = new Map();
 
 const dayList = (days) => (days.length ? days.join(' ') : 'No set days');
 
+// "12 of 30 seats open", or "Full" with the waitlist when the section has one
+const SeatCount = ({ seat }) => (seat.open > 0
+  ? <span>{seat.open} of {seat.capacity} seats open</span>
+  : <span className='text-red-500 font-medium'>Full{seat.waitCapacity > 0 ? ` · ${seat.waitlist} on waitlist` : ''}</span>);
+
 // One section as a card: when it meets, who teaches it (with GPA and RateMyProfessors),
-// where, and what it would clash with.
-const SectionCard = ({ option, picked, color, gpas, rmp, conflict, hovered, onToggle, onHover }) => (
+// where, how many seats are open, and what it would clash with.
+const SectionCard = ({ option, picked, color, gpas, rmp, seat, conflict, hovered, onToggle, onHover }) => (
   <button
     onClick={onToggle}
     onMouseEnter={() => onHover([option.crn])}
@@ -54,8 +59,9 @@ const SectionCard = ({ option, picked, color, gpas, rmp, conflict, hovered, onTo
           ))}
         </span>
       )}
-      <span className='flex items-center gap-2 text-[10px] text-tertiary'>
+      <span className='flex flex-wrap items-center gap-x-2 text-[10px] text-tertiary'>
         CRN {option.crn}
+        {seat && <SeatCount seat={seat} />}
         {conflict && (
           <span className='flex items-center gap-0.5 text-red-500 font-medium'>
             <IoIosWarning /> Overlaps {conflict}
@@ -68,8 +74,9 @@ const SectionCard = ({ option, picked, color, gpas, rmp, conflict, hovered, onTo
 
 // Picks a course's sections, a type at a time (Lecture, then its Lab...). The same
 // choices show on the calendar as dashed blocks while this is open.
-const SectionPicker = ({ course, options, picked, activeType, setActiveType, conflictFor, hoveredCrns, onHover, onPick, onUnpick }) => {
+const SectionPicker = ({ course, term, options, picked, activeType, setActiveType, conflictFor, hoveredCrns, onHover, onPick, onUnpick }) => {
   const [rmp, setRmp] = useState(() => rmpCache.get(course.detailId) ?? {});
+  const [seats, setSeats] = useState(null); // {seats: {crn: seat}, checkedAt}
   const color = eventColor(course.colorIndex);
 
   useEffect(() => {
@@ -79,6 +86,17 @@ const SectionPicker = ({ course, options, picked, activeType, setActiveType, con
       setRmp(scores);
     });
   }, [course.detailId]);
+
+  // seats are asked for each time the picker opens, since they change during registration
+  useEffect(() => {
+    setSeats(null);
+    const controller = new AbortController();
+    fetch(`/api/seats?${new URLSearchParams({ term, course: courseName(course) })}`, { signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(setSeats)
+      .catch(() => {});
+    return () => controller.abort();
+  }, [term, course.detailId]);
 
   const gpas = useMemo(() => {
     if (!course.instructor) return {};
@@ -121,7 +139,9 @@ const SectionPicker = ({ course, options, picked, activeType, setActiveType, con
       )}
       <p className='text-[11px] text-tertiary px-1'>
         {shown.length} {shortType(activeType).toLowerCase()} option{shown.length === 1 ? '' : 's'}
-        {linked && classId && typeRank(activeType) > typeRank(types[0]) ? ' for your lecture' : ''} · hover to preview on the calendar
+        {linked && classId && typeRank(activeType) > typeRank(types[0]) ? ' for your lecture' : ''}
+        <span className='[@media(hover:none)]:hidden'> · hover to preview on the calendar</span>
+        {seats && ` · seats as of ${new Date(seats.checkedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
       </p>
       <div className='flex flex-col gap-1.5'>
         {shown.map(option => {
@@ -134,6 +154,7 @@ const SectionPicker = ({ course, options, picked, activeType, setActiveType, con
               color={color}
               gpas={gpas}
               rmp={rmp}
+              seat={seats?.seats[option.crn]}
               conflict={isPicked ? null : conflictFor(option)}
               hovered={hoveredCrns?.includes(option.crn)}
               onHover={onHover}
