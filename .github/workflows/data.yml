@@ -179,21 +179,45 @@ jobs:
           aws s3 cp sections_out.json "s3://$BUCKET/snapshots/$SHA.json"
           echo "$SHA" > ../sections.lock
           echo "changed=true" >> "$GITHUB_OUTPUT"
-      - if: steps.snapshot.outputs.changed == 'true' || steps.sections.outputs.changed == 'true'
+      # the schedule terms' class dates (breaks, holidays) and exams for the calendar export,
+      # pinned in termdata.lock; whatever can't be scraped keeps its pinned value
+      - id: termdata
+        working-directory: server
+        run: |
+          if [ -f ../termdata.lock ]; then
+            aws s3 cp "s3://$BUCKET/snapshots/$(cat ../termdata.lock).json" data/termdata_pinned.json || true
+          fi
+          if ! python3 scrape_term_data.py --pinned data/termdata_pinned.json; then
+            echo "::warning::could not scrape term data, keeping termdata.lock"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SHA=$(sha256sum termdata_out.json | cut -d' ' -f1)
+          if [ "$SHA" = "$(cat ../termdata.lock 2>/dev/null)" ]; then
+            echo "term data unchanged"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          aws s3 cp termdata_out.json "s3://$BUCKET/snapshots/$SHA.json"
+          echo "$SHA" > ../termdata.lock
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - if: steps.snapshot.outputs.changed == 'true' || steps.sections.outputs.changed == 'true' || steps.termdata.outputs.changed == 'true'
         env:
           SHA: ${{ steps.snapshot.outputs.sha }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.lock src/data/terms.json
-          if [ -f sections.lock ]; then git add sections.lock; fi
+          for lock in sections.lock termdata.lock; do
+            if [ -f "$lock" ]; then git add "$lock"; fi
+          done
           git commit -m "data: snapshot ${SHA:0:12}"
           git pull --rebase
           git push
-      # keep the snapshots the last 10 data.lock / sections.lock commits point to (rollback window), delete the rest
+      # keep the snapshots the last 10 commits of each lock file point to (rollback window), delete the rest
       - name: Clean up old snapshots
         run: |
-          KEEP=$( (cat data.lock sections.lock 2>/dev/null; for lock in data.lock sections.lock; do
+          KEEP=$( (cat data.lock sections.lock termdata.lock 2>/dev/null; for lock in data.lock sections.lock termdata.lock; do
             for c in $(git log -n 10 --format=%H -- "$lock"); do git show "$c:$lock"; done; done) | sort -u)
           if ! grep -qx "$(cat data.lock)" <<< "$KEEP"; then
             echo "current snapshot missing from keep list, skipping cleanup"
