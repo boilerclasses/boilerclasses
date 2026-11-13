@@ -37,9 +37,10 @@ new="boilerclasses-$new_port"
 # NEXT_PUBLIC_SENTRY_DSN comes from the workflow's environment
 docker build --build-arg NEXT_PUBLIC_SENTRY_DSN -t "$image" .
 docker rm -f "$new" > /dev/null 2>&1 || true
-# the volume keeps the course embedding cache across deploys
+# the volumes keep the course embedding cache and the RateMyProfessors cache across deploys
 docker run -d --name "$new" --restart unless-stopped -p "127.0.0.1:$new_port:3000" \
-  -v boilerclasses-embeddings:/home/server/embedding_cache "$image" > /dev/null
+  -v boilerclasses-embeddings:/home/server/embedding_cache \
+  -v boilerclasses-rmp:/home/server/rmp_cache "$image" > /dev/null
 
 fetch() {
   local path=$1
@@ -62,13 +63,18 @@ wait_for() {
   done
 }
 
-# lexical search is up once push.py has loaded the snapshot into redis
-if ! wait_for 180 serves_search; then
-  echo "::error::$image failed its health check; $live keeps serving"
+# drops the new container and stops the deploy; the live one keeps serving
+reject() {
+  echo "::error::$image $1; $live keeps serving"
   docker logs --tail 40 "$new" || true
   docker rm -f "$new" > /dev/null
   exit 1
-fi
+}
+
+# lexical search is up once push.py has loaded the snapshot into redis
+wait_for 180 serves_search || reject "failed its health check"
+# course pages load professor ratings through the app; the check retries RMP hiccups itself
+docker exec -i "$new" python3 - < deploy/check_ratings.py || reject "failed its ratings check"
 # browser search and semantic search load in the background; a full re-embed
 # (an empty cache volume) takes ~30 min, so don't hold the deploy for that
 if ! wait_for 300 fully_loaded; then

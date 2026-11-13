@@ -2,6 +2,9 @@
  * This file contains functions to fetch RateMyProfessor ratings for professors.
  */
 
+// purdue IDs for West Lafayette (deploy/check_ratings.py looks professors up the same way)
+import schools from '@/data/rmpSchools.json';
+
 
 // Get RateMyProfessor ratings for instructor
 async function getRMPRating(instructor) {
@@ -17,7 +20,6 @@ async function getRMPRating(instructor) {
     let rating = 0;
 
     // for all Purdue University schools in West Lafayette, search prof
-    const schools = ["U2Nob29sLTc4Mw==", "U2Nob29sLTE3NTk5"]; // purdue IDs for West Lafayette
     for (const school of schools) {
       const paramsTeacher = new URLSearchParams({ name: instructor, id: school });
       const responseProf = await fetch("/api/ratings/searchTeacher?" + paramsTeacher);
