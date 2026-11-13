@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { offering } from '@/lib/terms';
 
-import { CURRENT_SEMESTER } from '@/hooks/useSearchFilters';
-
-const CourseSearch = ({ courses, onSelect, searchTerm, updateFilter }) => {
+const CourseSearch = ({ courses, semester, onSelect, searchTerm, updateFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const wrapperRef = useRef(null);
@@ -16,10 +15,10 @@ const CourseSearch = ({ courses, onSelect, searchTerm, updateFilter }) => {
 
     // Stable sort preserves Redis relevance within each availability group.
     return [...courses].sort((a, b) =>
-      Number(b.value.terms.includes(CURRENT_SEMESTER)) -
-      Number(a.value.terms.includes(CURRENT_SEMESTER))
+      Number(b.value.terms.includes(semester)) -
+      Number(a.value.terms.includes(semester))
     ).slice(0, 10);
-  }, [courses, shouldShowDropdown]);
+  }, [courses, semester, shouldShowDropdown]);
 
   // Update coursesRef when displayedCourses changes
   useEffect(() => {
@@ -101,44 +100,43 @@ const CourseSearch = ({ courses, onSelect, searchTerm, updateFilter }) => {
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          className="placeholder:text-tertiary text-primary text-xl bg-super w-full pb-2 border-b-2 border-[rgb(var(--background-opposite))] focus:outline-none focus:border-blue-500 transition duration-300"
-          placeholder="Search for courses..."
+          className="placeholder:text-tertiary text-primary text-sm bg-background w-full rounded-xl px-3 py-2.5 border border-[rgb(var(--background-secondary-color))] focus:outline-none focus:border-blue-500 transition duration-300"
+          placeholder="Add a course (e.g. CS 180, calculus)"
         />
       </div>
 
       {shouldShowDropdown && (
         <div className="absolute z-50 w-full mt-2 bg-background rounded-lg shadow-lg border border-[rgb(var(--background-secondary-color))] max-h-96 overflow-y-auto">
           {displayedCourses.length > 0 ? (
-            displayedCourses.map((course, index) => (
-              <div
-                key={course.id}
-                onClick={() => handleSelect(course)}
-                onMouseEnter={() => setSelectedIndex(index)}
-                className={`flex flex-row justify-between px-4 py-2 cursor-pointer ${selectedIndex === index
-                  ? 'bg-background-secondary text-primary'
-                  : 'text-primary hover:bg-background-secondary'
-                  }`}
-              >
-                <div>
-                  <div className="font-medium flex items-center justify-between">
-                    <span>{course.value.subjectCode} {course.value.courseCode}</span>
+            displayedCourses.map((course, index) => {
+              const availability = offering(course.value.terms, semester);
+              return (
+                <div
+                  key={course.id}
+                  onClick={() => handleSelect(course)}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  className={`flex items-start gap-3 px-4 py-2 cursor-pointer ${selectedIndex === index
+                    ? 'bg-background-secondary text-primary'
+                    : 'text-primary hover:bg-background-secondary'
+                    }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className={`font-medium ${availability.offered ? '' : 'text-secondary'}`}>
+                      {course.value.subjectCode} {course.value.courseCode}
+                    </div>
+                    <div className="text-sm text-tertiary truncate">
+                      {course.value.title}
+                    </div>
                   </div>
-                  <div className="text-sm text-tertiary truncate">
-                    {course.value.title}
-                  </div>
-                  {!course.value.terms.includes(CURRENT_SEMESTER) && (
-                    <span className="md:hidden block text-xs px-2 py-1 rounded h-fit w-fit self-start bg-orange-500/50 text-orange-100/50">
-                      Not Offered in {CURRENT_SEMESTER}
+                  {/* courses that don't run this term stay listed, with when they do */}
+                  {!availability.offered && (
+                    <span className="mt-0.5 shrink-0 whitespace-nowrap rounded-full border border-[rgb(var(--background-secondary-color))] px-2 py-0.5 text-[11px] text-tertiary">
+                      {availability.label}
                     </span>
                   )}
                 </div>
-                {!course.value.terms.includes(CURRENT_SEMESTER) && (
-                  <span className="hidden md:block text-xs px-2 py-1 rounded h-fit self-start bg-orange-500/50 text-orange-100/50">
-                    Not Offered in {CURRENT_SEMESTER}
-                  </span>
-                )}
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="px-4 py-2 text-tertiary">
               No courses found

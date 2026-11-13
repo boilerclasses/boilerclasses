@@ -37,7 +37,11 @@ export default async function handler(req, res) {
     const levels = param(req.query.levels);
     const sched = param(req.query.sched);
     const maxlim = param(req.query.maxlim, "100");
-    const filters = [subjects.split(","), terms.split(","), gen.split(","), cmin, cmax, levels.split(","), sched.split(",")];
+    // Only sent while the GPA filter is narrowed; courses without grades are then left out
+    const gpa = req.query.gmin !== undefined || req.query.gmax !== undefined
+      ? [param(req.query.gmin, "0"), param(req.query.gmax, "4")]
+      : null;
+    const filters = [subjects.split(","), terms.split(","), gen.split(","), cmin, cmax, levels.split(","), sched.split(","), gpa];
     // Same reading of the query as browser search (src/lib/courseSearch.mjs): pinned
     // nicknames first, then each variant ("calculus 3", "calc 3") in order.
     const pinned = nicknameCourses(q);

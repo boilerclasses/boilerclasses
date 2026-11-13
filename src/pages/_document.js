@@ -9,12 +9,10 @@ export default function Document() {
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
+                // keep in sync with readTheme in src/lib/theme.js
                 function getInitialTheme() {
-                  const storedTheme = localStorage.getItem('theme')
-                  if (storedTheme) {
-                    return storedTheme
-                  }
-                  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'dark'
+                  const match = document.cookie.match(/(?:^|; )theme=(light|dark)/)
+                  return (match && match[1]) || localStorage.getItem('theme') || 'dark'
                 }
                 document.documentElement.classList.add(getInitialTheme());
               })()

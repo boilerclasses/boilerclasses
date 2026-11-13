@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 
 import {
@@ -8,8 +8,42 @@ import {
 import FeedbackModal from '@/components/feedbackModal';
 
 
-const Footer = () => {
+const linkStyle = 'underline decoration-dashed decoration-1 underline-offset-2 hover:text-secondary';
+
+// `compact` is for narrow columns (the schedule sidebar): small, left-aligned, and with
+// the links spaced apart instead of joined by dots that strand at line ends.
+const Footer = ({ compact = false }) => {
     const { isOpen, onOpen, onClose } = useDisclosure();
+
+    // Links ending in #feedback (like the one in the README) open the feedback box on arrival.
+    // Only the full footer listens: the schedule page mounts both and hides one with CSS.
+    useEffect(() => {
+        if (!compact && window.location.hash === '#feedback') onOpen();
+    }, [compact, onOpen]);
+
+    const closeFeedback = () => {
+        if (window.location.hash === '#feedback') {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        onClose();
+    };
+
+    if (compact) {
+        return (
+            <div className='px-1 py-3 text-[11px] leading-relaxed text-tertiary'>
+                <p>
+                    An <Link href={`/dir`} className={linkStyle}>unofficial catalog</Link> for Purdue courses made by Purdue students,
+                    maintained by <a href='https://boilerexams.com' target="_blank" rel="noopener noreferrer" className={linkStyle}>Boilerexams</a>.
+                </p>
+                <p className='mt-1 flex flex-wrap gap-x-3'>
+                    <a href='https://github.com/boilerclasses/boilerclasses' target="_blank" rel="noopener noreferrer" className={linkStyle}>GitHub</a>
+                    <button onClick={onOpen} className={linkStyle}>Feedback</button>
+                    <a href='https://boilerexams.com/apply' target="_blank" rel="noopener noreferrer" className={linkStyle}>Join the team</a>
+                </p>
+                <FeedbackModal isOpen={isOpen} onClose={closeFeedback} />
+            </div>
+        );
+    }
 
     return (
         <div className='grid justify-center py-5 relative'>
@@ -38,7 +72,7 @@ const Footer = () => {
                 </span>
                 {/* Inspired by <a href='https://classes.wtf/' target='_blank' rel='noopener noreferrer' className='underline decoration-dashed decoration-1 underline-offset-2'>classes.wtf</a><br /> */}
             </h1>
-            <FeedbackModal isOpen={isOpen} onClose={onClose} />
+            <FeedbackModal isOpen={isOpen} onClose={closeFeedback} />
         </div>
     );
 };

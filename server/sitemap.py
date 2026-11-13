@@ -7,6 +7,10 @@ with open('../public/sitemap.xml', 'w') as xml_file:
   xml_file.write(f'\t\t<loc>https://boilerclasses.com/</loc>\n')
   xml_file.write(f'\t\t<priority>1</priority>\n')
   xml_file.write('\t</url>\n')
+  xml_file.write('\t<url>\n')
+  xml_file.write(f'\t\t<loc>https://boilerclasses.com/schedule</loc>\n')
+  xml_file.write(f'\t\t<priority>1</priority>\n')
+  xml_file.write('\t</url>\n')
 
 with open('classes_out.json', 'r') as file:
   data = json.load(file)
