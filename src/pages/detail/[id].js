@@ -57,7 +57,7 @@ const CardDetails = ({ courseData, semData }) => {
 
   if (loading) {
     return (
-      <div className='h-screen w-screen flex items-center justify-center'>
+      <div className='h-[calc(100vh-var(--banner-height,0px))] w-screen flex items-center justify-center'>
         <Spinner size="lg" color={`rgb(var(--text-color))`} />
       </div>
     );
