@@ -139,7 +139,7 @@ const Schedule = () => {
         <link rel="canonical" href="https://boilerclasses.com/schedule" />
       </Head>
 
-      <div className={`min-h-screen md:min-h-0 bg-super text-primary ${inter.className}`}>
+      <div className={`min-h-[calc(100vh-var(--banner-height,0px))] md:min-h-0 bg-super text-primary ${inter.className}`}>
         {/* remount per term so every piece of schedule state reloads from that term's storage */}
         {semester && (
           <SchedulePlanner
@@ -492,7 +492,7 @@ const SchedulePlanner = ({ semester, setSemester, shared, onLeaveShared, pending
   return (
     // From md up the planner fills the window like a calendar app: the sidebar and the
     // calendar each scroll on their own, so the calendar stays in view while picking.
-    <div className='mx-auto max-w-[1600px] px-4 pb-6 md:pb-4 md:h-[100dvh] md:flex md:flex-col'>
+    <div className='mx-auto max-w-[1600px] px-4 pb-6 md:pb-4 md:h-[calc(100dvh-var(--banner-height,0px))] md:flex md:flex-col'>
       {/* top bar */}
       <header className='flex flex-wrap items-center gap-3 py-4 pr-12 md:flex-none'>
         <Link href='/' className='flex items-center gap-2'>
